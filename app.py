@@ -15,6 +15,55 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
+# ==========================================
+# AUTENTICACIÓN
+# ==========================================
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+def login(email, password):
+    try:
+        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        st.session_state.user = response.user
+        st.success("¡Inicio de sesión exitoso!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error al iniciar sesión: {e}")
+
+def logout():
+    try:
+        supabase.auth.sign_out()
+        st.session_state.user = None
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error al cerrar sesión: {e}")
+
+# Si no hay usuario en sesión, mostramos únicamente el formulario de login
+if st.session_state.user is None:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.title("🚢 Control de Logística")
+        st.subheader("Iniciar Sesión")
+        with st.form("login_form"):
+            email = st.text_input("Correo electrónico")
+            password = st.text_input("Contraseña", type="password")
+            submit = st.form_submit_button("Ingresar")
+            if submit:
+                if email and password:
+                    login(email, password)
+                else:
+                    st.warning("Por favor completa ambos campos.")
+    st.stop()  # Detiene la ejecución para que no se cargue el resto del panel
+
+# Sidebar para cerrar sesión y mostrar el usuario actual
+with st.sidebar:
+    st.write(f"👤 **Usuario:** {st.session_state.user.email}")
+    if st.button("🚪 Cerrar Sesión"):
+        logout()
+
+# ==========================================
+# PANEL PRINCIPAL (SÓLO ACCESIBLE SI INICIÓ SESIÓN)
+# ==========================================
 st.title("🚢 Sistema de Control de Carga y Pagos")
 
 # --- MENÚ PRINCIPAL ---
@@ -204,7 +253,7 @@ with tab_pagos:
             prov_nombre = p['contactos']['nombre_empresa'] if p['contactos'] else "N/A"
             col_info.write(f"**A:** {prov_nombre} | **Monto:** ${p['monto']:,.2f} | **Vence:** {p['fecha_vencimiento']} (Op: {p['operaciones']['referencia']})")
             if col_btn.button("✅ Marcar Pagado", key=f"pago_{p['id']}"):
-                supabase.table("pagos").update({"pagado": True, "fecha_pago": str(datetime.now().date())}).eq("id", c['id']).execute()
+                supabase.table("pagos").update({"pagado": True, "fecha_pago": str(datetime.now().date())}).eq("id", p['id']).execute()
                 st.rerun()
     else:
-        st.info("No hay pagos pendientes pendientes.")
+        st.info("No hay pagos pendientes.")
