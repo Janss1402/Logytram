@@ -3,6 +3,31 @@ from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
 
+# Agregar este bloque justo al inicio de app.py
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if st.session_state.user is None:
+    st.title("🔒 Acceso Privado - Logística")
+    email = st.text_input("Correo electrónico")
+    password = st.text_input("Contraseña", type="password")
+    
+    if st.button("Iniciar Sesión"):
+        try:
+            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            st.session_state.user = res.user
+            st.success("Acceso concedido")
+            st.rerun()
+        except Exception as e:
+            st.error("Credenciales incorrectas")
+    st.stop() # Detiene la ejecución si no se ha iniciado sesión
+
+# Botón para cerrar sesión en la barra lateral
+if st.sidebar.button("Cerrar Sesión"):
+    supabase.auth.sign_out()
+    st.session_state.user = None
+    st.rerun()
+    
 # Configuración de página
 st.set_page_config(page_title="Control de Logística", page_icon="🚢", layout="wide")
 
