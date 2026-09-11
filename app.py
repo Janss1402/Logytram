@@ -2,11 +2,10 @@ import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
-import base64
 import io
 from PIL import Image
 
-# Importaciones para generación de PDF con ReportLab
+# Importaciones de ReportLab
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
@@ -50,7 +49,6 @@ def logout():
     except Exception as e:
         st.error(f"Error al cerrar sesión: {e}")
 
-# Si no hay usuario en sesión, mostramos únicamente el formulario de login
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -68,7 +66,7 @@ if st.session_state.user is None:
     st.stop()
 
 # ==========================================
-# GENERACIÓN DE PDF (REPORTLAB)
+# GENERACIÓN DE PDF BIMONEDA (REPORTLAB)
 # ==========================================
 def generar_pdf_reportlab(titulo_reporte, headers, data_rows, kpis=None):
     buffer = io.BytesIO()
@@ -83,40 +81,28 @@ def generar_pdf_reportlab(titulo_reporte, headers, data_rows, kpis=None):
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontSize=18,
-        textColor=colors.HexColor("#1a365d"),
-        spaceAfter=4
+        'DocTitle', parent=styles['Heading1'], fontSize=18,
+        textColor=colors.HexColor("#1a365d"), spaceAfter=4
     )
     subtitle_style = ParagraphStyle(
-        'DocSubTitle',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=colors.HexColor("#718096"),
-        spaceAfter=15
+        'DocSubTitle', parent=styles['Normal'], fontSize=9,
+        textColor=colors.HexColor("#718096"), spaceAfter=15
     )
     cell_style = ParagraphStyle(
-        'TableCell',
-        parent=styles['Normal'],
-        fontSize=9,
+        'TableCell', parent=styles['Normal'], fontSize=8,
         textColor=colors.HexColor("#2c3e50")
     )
     cell_header_style = ParagraphStyle(
-        'TableHeaderCell',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=colors.white,
-        fontName="Helvetica-Bold"
+        'TableHeaderCell', parent=styles['Normal'], fontSize=8,
+        textColor=colors.white, fontName="Helvetica-Bold"
     )
 
     elements = []
 
     # Encabezado (Título + Logo)
-    header_data = []
     text_header = [
         Paragraph(titulo_reporte, title_style),
-        Paragraph("Sistema de Control de Carga y Pagos Logísticos", subtitle_style)
+        Paragraph(f"Sistema de Control Logístico | Tasa de cambio: Q{st.session_state.tasa_cambio:.2f}/USD", subtitle_style)
     ]
     
     if st.session_state.logo_bytes:
@@ -130,7 +116,6 @@ def generar_pdf_reportlab(titulo_reporte, headers, data_rows, kpis=None):
             if target_height > 50:
                 target_height = 50
                 target_width = target_height / aspect
-            
             logo_img = RLImage(io.BytesIO(st.session_state.logo_bytes), width=target_width, height=target_height)
             header_data = [[text_header, logo_img]]
         except Exception:
@@ -148,18 +133,17 @@ def generar_pdf_reportlab(titulo_reporte, headers, data_rows, kpis=None):
     elements.append(header_table)
     elements.append(Spacer(1, 15))
 
-    # KPIs si existen
+    # KPIs
     if kpis:
-        kpi_data = []
-        titles = [Paragraph(f"<b>{k['title']}</b>", ParagraphStyle('KPIT', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor("#4a5568"), alignment=1)) for k in kpis]
-        values = [Paragraph(f"<b>{k['value']}</b>", ParagraphStyle('KPIV', parent=styles['Normal'], fontSize=12, textColor=colors.HexColor(k.get('color', "#1a202c")), alignment=1)) for k in kpis]
+        titles = [Paragraph(f"<b>{k['title']}</b>", ParagraphStyle('KPIT', parent=styles['Normal'], fontSize=7, textColor=colors.HexColor("#4a5568"), alignment=1)) for k in kpis]
+        values = [Paragraph(f"<b>{k['value']}</b>", ParagraphStyle('KPIV', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor(k.get('color', "#1a202c")), alignment=1)) for k in kpis]
         
-        kpi_table = Table([titles, values], colWidths=[180]*len(kpis))
+        kpi_table = Table([titles, values], colWidths=[540 / len(kpis)] * len(kpis))
         kpi_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f7fafc")),
             ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
             ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-            ('PADDING', (0, 0), (-1, -1), 8),
+            ('PADDING', (0, 0), (-1, -1), 6),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ]))
         elements.append(kpi_table)
@@ -168,20 +152,18 @@ def generar_pdf_reportlab(titulo_reporte, headers, data_rows, kpis=None):
     # Tabla de Datos
     if headers and data_rows:
         formatted_headers = [Paragraph(h, cell_header_style) for h in headers]
-        formatted_rows = []
-        for row in data_rows:
-            formatted_rows.append([Paragraph(str(cell), cell_style) for cell in row])
+        formatted_rows = [[Paragraph(str(cell), cell_style) for cell in row] for row in data_rows]
         
         table_data = [formatted_headers] + formatted_rows
         col_width = 540 / len(headers)
-        data_table = Table(table_data, colWidths=[col_width]*len(headers))
+        data_table = Table(table_data, colWidths=[col_width] * len(headers))
         
         ts = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2b4c7e")),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
         ]
         
@@ -207,8 +189,13 @@ with st.sidebar:
         logout()
     
     st.markdown("---")
+    st.subheader("💱 Ajustes de Moneda")
+    tasa_input = st.number_input("Tasa de Cambio (1 USD -> GTQ)", min_value=1.0, value=7.80, step=0.01)
+    st.session_state.tasa_cambio = tasa_input
+
+    st.markdown("---")
     st.subheader("🎨 Personalización")
-    uploaded_logo = st.file_uploader("Cargar Logo para Reportes (PNG/JPG)", type=["png", "jpg", "jpeg"])
+    uploaded_logo = st.file_uploader("Cargar Logo para Reportes", type=["png", "jpg", "jpeg"])
     
     if uploaded_logo is not None:
         st.session_state.logo_bytes = uploaded_logo.read()
@@ -243,20 +230,23 @@ with tab_dash:
     res_pagos = supabase.table("pagos").select("monto").eq("pagado", False).execute()
     res_ops = supabase.table("operaciones").select("id").eq("estado", "En Tránsito").execute()
     
-    total_cobrar = sum([item['monto'] for item in res_cobros.data]) if res_cobros.data else 0.0
-    total_pagar = sum([item['monto'] for item in res_pagos.data]) if res_pagos.data else 0.0
+    total_cobrar_usd = sum([item['monto'] for item in res_cobros.data]) if res_cobros.data else 0.0
+    total_pagar_usd = sum([item['monto'] for item in res_pagos.data]) if res_pagos.data else 0.0
+    
+    total_cobrar_gtq = total_cobrar_usd * st.session_state.tasa_cambio
+    total_pagar_gtq = total_pagar_usd * st.session_state.tasa_cambio
     ops_activas = len(res_ops.data) if res_ops.data else 0
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("🟢 Dinero Por Cobrar", f"${total_cobrar:,.2f}")
-    col2.metric("🔴 Cuentas Por Pagar", f"${total_pagar:,.2f}")
-    col3.metric("🚢 Embargos/Viajes Activos", ops_activas)
+    col1.metric("🟢 Por Cobrar (USD / GTQ)", f"${total_cobrar_usd:,.2f}", f"Q{total_cobrar_gtq:,.2f}")
+    col2.metric("🔴 Por Pagar (USD / GTQ)", f"${total_pagar_usd:,.2f}", f"Q{total_pagar_gtq:,.2f}")
+    col3.metric("🚢 Embarques Activos", ops_activas)
 
     st.markdown("---")
     
     kpis_pdf = [
-        {"title": "DINERO POR COBRAR", "value": f"${total_cobrar:,.2f}", "color": "#2e7d32"},
-        {"title": "CUENTAS POR PAGAR", "value": f"${total_pagar:,.2f}", "color": "#c62828"},
+        {"title": "POR COBRAR (USD / GTQ)", "value": f"${total_cobrar_usd:,.2f} / Q{total_cobrar_gtq:,.2f}", "color": "#2e7d32"},
+        {"title": "POR PAGAR (USD / GTQ)", "value": f"${total_pagar_usd:,.2f} / Q{total_pagar_gtq:,.2f}", "color": "#c62828"},
         {"title": "VIAJES ACTIVOS", "value": str(ops_activas), "color": "#1565c0"}
     ]
     
@@ -360,7 +350,7 @@ with tab_ops:
         )
 
 # ==========================================
-# 4. COBROS
+# 4. COBROS (BIMONEDA)
 # ==========================================
 with tab_cobros:
     st.header("Cobros a Clientes")
@@ -374,14 +364,21 @@ with tab_cobros:
         else:
             with st.form("form_cobro"):
                 op_sel = st.selectbox("Operación / BL*", list(dict_ops.keys()))
-                monto = st.number_input("Monto a Cobrar ($)*", min_value=0.0, step=100.0)
+                
+                col_m1, col_m2 = st.columns(2)
+                moneda_ingreso = col_m1.radio("Moneda de registro:", ["USD ($)", "GTQ (Q)"])
+                monto_ingresado = col_m2.number_input("Monto*", min_value=0.0, step=100.0)
+                
                 concepto = st.text_input("Concepto", value="Flete Marítimo y Gastos de Puerto")
                 vencimiento = st.date_input("Fecha Límite de Pago")
                 
                 if st.form_submit_button("Guardar Cobro"):
+                    # Convertimos siempre a USD para almacenar uniformemente
+                    monto_final_usd = monto_ingresado if "USD" in moneda_ingreso else monto_ingresado / st.session_state.tasa_cambio
+                    
                     supabase.table("cobros").insert({
                         "operacion_id": dict_ops[op_sel],
-                        "monto": monto,
+                        "monto": monto_final_usd,
                         "concepto": concepto,
                         "fecha_vencimiento": str(vencimiento)
                     }).execute()
@@ -393,14 +390,25 @@ with tab_cobros:
     st.subheader("Pendientes por Cobrar")
     if cobros_pendientes:
         for c in cobros_pendientes:
+            m_usd = c['monto']
+            m_gtq = m_usd * st.session_state.tasa_cambio
             col_info, col_btn = st.columns([3, 1])
-            col_info.write(f"**Referencia:** {c['operaciones']['referencia']} | **Monto:** ${c['monto']:,.2f} | **Vence:** {c['fecha_vencimiento']}")
+            col_info.write(f"**Referencia:** {c['operaciones']['referencia']} | **Monto:** ${m_usd:,.2f} USD / **Q{m_gtq:,.2f} GTQ** | **Vence:** {c['fecha_vencimiento']}")
             if col_btn.button("✅ Marcar Pagado", key=f"cobro_{c['id']}"):
                 supabase.table("cobros").update({"pagado": True, "fecha_pago": str(datetime.now().date())}).eq("id", c['id']).execute()
                 st.rerun()
 
-        headers = ["Operación", "Concepto", "Monto ($)", "Vencimiento"]
-        rows = [[c['operaciones']['referencia'], c['concepto'], f"${c['monto']:,.2f}", c['fecha_vencimiento']] for c in cobros_pendientes]
+        headers = ["Operación", "Concepto", "Monto (USD)", "Monto (GTQ)", "Vencimiento"]
+        rows = [
+            [
+                c['operaciones']['referencia'],
+                c['concepto'],
+                f"${c['monto']:,.2f}",
+                f"Q{c['monto'] * st.session_state.tasa_cambio:,.2f}",
+                c['fecha_vencimiento']
+            ]
+            for c in cobros_pendientes
+        ]
         pdf_cobros = generar_pdf_reportlab("Reporte de Cuentas por Cobrar", headers, rows)
         
         st.markdown("---")
@@ -414,7 +422,7 @@ with tab_cobros:
         st.info("¡Excelente! No hay cobros pendientes.")
 
 # ==========================================
-# 5. PAGOS
+# 5. PAGOS (BIMONEDA)
 # ==========================================
 with tab_pagos:
     st.header("Pagos a Navieras y Proveedores")
@@ -429,15 +437,21 @@ with tab_pagos:
             with st.form("form_pago"):
                 op_sel = st.selectbox("Asociado a la Operación*", list(dict_ops.keys()))
                 prov_sel = st.selectbox("Proveedor / Naviera*", list(dict_provs.keys()))
-                monto = st.number_input("Monto a Pagar ($)*", min_value=0.0, step=100.0)
+                
+                col_m1, col_m2 = st.columns(2)
+                moneda_ingreso = col_m1.radio("Moneda de registro:", ["USD ($)", "GTQ (Q)"])
+                monto_ingresado = col_m2.number_input("Monto*", min_value=0.0, step=100.0)
+                
                 concepto = st.text_input("Concepto", value="Flete Naviera")
                 vencimiento = st.date_input("Fecha Vencimiento Factura")
                 
                 if st.form_submit_button("Guardar Pago"):
+                    monto_final_usd = monto_ingresado if "USD" in moneda_ingreso else monto_ingresado / st.session_state.tasa_cambio
+                    
                     supabase.table("pagos").insert({
                         "operacion_id": dict_ops[op_sel],
                         "proveedor_id": dict_provs[prov_sel],
-                        "monto": monto,
+                        "monto": monto_final_usd,
                         "concepto": concepto,
                         "fecha_vencimiento": str(vencimiento)
                     }).execute()
@@ -449,20 +463,23 @@ with tab_pagos:
     st.subheader("Pendientes por Pagar")
     if pagos_pendientes:
         for p in pagos_pendientes:
+            m_usd = p['monto']
+            m_gtq = m_usd * st.session_state.tasa_cambio
             col_info, col_btn = st.columns([3, 1])
             prov_nombre = p['contactos']['nombre_empresa'] if p['contactos'] else "N/A"
-            col_info.write(f"**A:** {prov_nombre} | **Monto:** ${p['monto']:,.2f} | **Vence:** {p['fecha_vencimiento']} (Op: {p['operaciones']['referencia']})")
+            col_info.write(f"**A:** {prov_nombre} | **Monto:** ${m_usd:,.2f} USD / **Q{m_gtq:,.2f} GTQ** | **Vence:** {p['fecha_vencimiento']} (Op: {p['operaciones']['referencia']})")
             if col_btn.button("✅ Marcar Pagado", key=f"pago_{p['id']}"):
                 supabase.table("pagos").update({"pagado": True, "fecha_pago": str(datetime.now().date())}).eq("id", p['id']).execute()
                 st.rerun()
 
-        headers = ["Proveedor", "Operación", "Concepto", "Monto ($)", "Vencimiento"]
+        headers = ["Proveedor", "Operación", "Concepto", "Monto (USD)", "Monto (GTQ)", "Vencimiento"]
         rows = [
             [
                 p['contactos']['nombre_empresa'] if p['contactos'] else 'N/A',
                 p['operaciones']['referencia'],
                 p['concepto'],
                 f"${p['monto']:,.2f}",
+                f"Q{p['monto'] * st.session_state.tasa_cambio:,.2f}",
                 p['fecha_vencimiento']
             ]
             for p in pagos_pendientes
