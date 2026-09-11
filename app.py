@@ -8,7 +8,9 @@ from weasyprint import HTML
 # Configuración de página
 st.set_page_config(page_title="Control de Logística", page_icon="🚢", layout="wide")
 
-# Conexión a Supabase mediante Secrets
+# ==========================================
+# CONEXIÓN A SUPABASE
+# ==========================================
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"]
@@ -18,7 +20,7 @@ def init_supabase() -> Client:
 supabase = init_supabase()
 
 # ==========================================
-# AUTENTICACIÓN Y SESIÓN
+# AUTENTICACIÓN
 # ==========================================
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -43,7 +45,7 @@ def logout():
     except Exception as e:
         st.error(f"Error al cerrar sesión: {e}")
 
-# Si no hay usuario en sesión, mostramos únicamente el formulario de login
+# Pantalla de Login si no hay sesión
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -61,46 +63,50 @@ if st.session_state.user is None:
     st.stop()
 
 # ==========================================
-# FUNCION PARA GENERAR REPORTE PDF (WEASYPRINT)
+# FUNCION GENERADORA DE PDF (WEASYPRINT)
 # ==========================================
-def generar_pdf_html(titulo_reporte, contenido_html, kpis_html=""):
-    """
-    Genera un archivo PDF a partir de una plantilla HTML.
-    Soporta incrustación de logo en Base64.
-    """
-    logo_tag = ""
+def generar_pdf_reporte(titulo_reporte: str, df: pd.DataFrame, resumen_kpi: dict = None) -> bytes:
+    """Genera un archivo PDF estilizado con encabezado, logo y datos."""
+    
+    # Preparar logo en HTML si existe
+    logo_html = ""
     if st.session_state.logo_base64:
-        logo_tag = f'<img src="{st.session_state.logo_base64}" class="logo" />'
+        logo_html = f'<img src="data:image/png;base64,{st.session_state.logo_base64}" class="logo"/>'
     else:
-        logo_tag = '<div class="logo-placeholder">🚢 LOGÍSTICA</div>'
+        logo_html = '<div class="logo-placeholder">🚢 LOGO EMPRESA</div>'
 
-    fecha_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
+    # Sección opcional de KPIs (para Dashboard/Resumen)
+    kpi_html = ""
+    if resumen_kpi:
+        kpi_html = '<div class="kpi-container">'
+        for k, v in resumen_kpi.items():
+            kpi_html += f'<div class="kpi-card"><div class="kpi-title">{k}</div><div class="kpi-value">{v}</div></div>'
+        kpi_html += '</div>'
 
-    html_template = f"""
+    # Convertir DataFrame a Tabla HTML limpia
+    tabla_html = df.to_html(index=False, classes="data-table", escape=False) if not df.empty else "<p>No hay datos registrados.</p>"
+
+    fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
         <style>
             @page {{
-                size: A4;
-                margin: 20mm 15mm 20mm 15mm;
+                size: A4 portrait;
+                margin: 15mm 12mm;
                 @bottom-right {{
                     content: "Página " counter(page) " de " counter(pages);
-                    font-size: 8pt;
                     font-family: Arial, sans-serif;
-                    color: #666;
-                }}
-                @bottom-left {{
-                    content: "Generado el {fecha_hoy}";
                     font-size: 8pt;
-                    font-family: Arial, sans-serif;
                     color: #666;
                 }}
             }}
             body {{
-                font-family: 'Helvetica', 'Arial', sans-serif;
-                color: #2c3e50;
+                font-family: Arial, sans-serif;
+                color: #222;
                 margin: 0;
                 padding: 0;
                 font-size: 10pt;
@@ -108,147 +114,137 @@ def generar_pdf_html(titulo_reporte, contenido_html, kpis_html=""):
             .header-table {{
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 25px;
-                border-bottom: 2px solid #2b4c7e;
+                border-bottom: 2px solid #1a365d;
                 padding-bottom: 10px;
+                margin-bottom: 20px;
             }}
             .header-table td {{
                 vertical-align: middle;
             }}
-            .title {{
-                font-size: 18pt;
+            .logo {{
+                max-height: 55px;
+                max-width: 180px;
+                object-fit: contain;
+            }}
+            .logo-placeholder {{
+                font-weight: bold;
+                font-size: 14pt;
+                color: #1a365d;
+            }}
+            .title-section {{
+                text-align: right;
+            }}
+            .report-title {{
+                font-size: 16pt;
                 font-weight: bold;
                 color: #1a365d;
                 margin: 0;
             }}
-            .subtitle {{
-                font-size: 9pt;
-                color: #718096;
+            .report-date {{
+                font-size: 8pt;
+                color: #666;
                 margin-top: 4px;
-            }}
-            .logo {{
-                max-height: 55px;
-                max-width: 180px;
-                float: right;
-            }}
-            .logo-placeholder {{
-                font-size: 14pt;
-                font-weight: bold;
-                color: #2b4c7e;
-                text-align: right;
             }}
             
             /* KPIs */
             .kpi-container {{
+                display: table;
                 width: 100%;
                 margin-bottom: 20px;
             }}
             .kpi-card {{
+                display: table-cell;
                 background-color: #f7fafc;
                 border: 1px solid #e2e8f0;
-                border-radius: 6px;
-                padding: 10px 15px;
+                border-radius: 4px;
+                padding: 10px;
                 text-align: center;
+                width: 30%;
             }}
             .kpi-title {{
                 font-size: 8pt;
-                text-transform: uppercase;
                 color: #4a5568;
+                text-transform: uppercase;
                 font-weight: bold;
             }}
             .kpi-value {{
-                font-size: 14pt;
+                font-size: 13pt;
                 font-weight: bold;
-                color: #1a202c;
-                margin-top: 5px;
+                color: #2b6cb0;
+                margin-top: 4px;
             }}
 
-            /* Tablas */
-            table.data-table {{
+            /* TABLA */
+            .data-table {{
                 width: 100%;
                 border-collapse: collapse;
-                margin-top: 15px;
+                margin-top: 10px;
             }}
-            table.data-table th {{
-                background-color: #2b4c7e;
+            .data-table th {{
+                background-color: #2b6cb0;
                 color: #ffffff;
                 text-align: left;
-                padding: 8px 10px;
+                padding: 8px;
                 font-size: 9pt;
                 font-weight: bold;
             }}
-            table.data-table td {{
-                padding: 7px 10px;
+            .data-table td {{
+                padding: 7px 8px;
                 border-bottom: 1px solid #e2e8f0;
-                font-size: 9pt;
+                font-size: 8.5pt;
             }}
-            table.data-table tr:nth-child(even) {{
+            .data-table tr:nth-child(even) {{
                 background-color: #f8fafc;
-            }}
-            
-            .no-data {{
-                padding: 20px;
-                background-color: #edf2f7;
-                text-align: center;
-                color: #4a5568;
-                border-radius: 4px;
-                font-style: italic;
             }}
         </style>
     </head>
     <body>
         <table class="header-table">
             <tr>
-                <td style="width: 70%;">
-                    <div class="title">{titulo_reporte}</div>
-                    <div class="subtitle">Sistema de Control de Carga y Pagos Logísticos</div>
-                </td>
-                <td style="width: 30%; text-align: right;">
-                    {logo_tag}
+                <td>{logo_html}</td>
+                <td class="title-section">
+                    <div class="report-title">{titulo_reporte}</div>
+                    <div class="report-date">Emitido: {fecha_emision}</div>
                 </td>
             </tr>
         </table>
 
-        {kpis_html}
+        {kpi_html}
 
-        {contenido_html}
+        <h3 style="color: #1a365d; margin-bottom: 8px;">Detalle de Registros</h3>
+        {tabla_html}
     </body>
     </html>
     """
-    
-    return HTML(string=html_template).write_pdf()
+
+    return HTML(string=html_content).write_pdf()
 
 # ==========================================
-# SIDEBAR (LOGOUT & CONFIGURACIÓN DE LOGO)
+# BARRA LATERAL (CONFIGURACIÓN Y LOGOUT)
 # ==========================================
 with st.sidebar:
     st.write(f"👤 **Usuario:** {st.session_state.user.email}")
     if st.button("🚪 Cerrar Sesión"):
         logout()
-    
+
     st.markdown("---")
-    st.subheader("🎨 Personalización")
-    uploaded_logo = st.file_uploader("Cargar Logo para Reportes (PNG/JPG)", type=["png", "jpg", "jpeg"])
+    st.subheader("🖼️ Configuración del Logo")
+    uploaded_logo = st.file_uploader("Cargar Logo para Reportes PDF", type=["png", "jpg", "jpeg"])
     
     if uploaded_logo is not None:
         bytes_data = uploaded_logo.read()
-        base64_str = base64.b64encode(bytes_data).decode("utf-8")
-        mime_type = uploaded_logo.type
-        st.session_state.logo_base64 = f"data:{mime_type};base64,{base64_str}"
+        st.session_state.logo_base64 = base64.b64encode(bytes_data).decode()
         st.success("¡Logo cargado correctamente!")
-    
-    if st.session_state.logo_base64:
-        st.image(st.session_state.logo_base64, caption="Logo activo para reportes", use_container_width=True)
-        if st.button("❌ Quitar Logo"):
-            st.session_state.logo_base64 = None
-            st.rerun()
+        st.image(uploaded_logo, width=150)
+    elif st.session_state.logo_base64:
+        st.info("Logo configurado actualmente:")
+        st.image(base64.b64decode(st.session_state.logo_base64), width=150)
 
 # ==========================================
 # PANEL PRINCIPAL
 # ==========================================
 st.title("🚢 Sistema de Control de Carga y Pagos")
 
-# --- MENÚ PRINCIPAL ---
 tab_dash, tab_ops, tab_cobros, tab_pagos, tab_contactos = st.tabs([
     "📊 Resumen Hoy", 
     "🚢 Operaciones (Viajes)", 
@@ -258,7 +254,7 @@ tab_dash, tab_ops, tab_cobros, tab_pagos, tab_contactos = st.tabs([
 ])
 
 # ==========================================
-# 1. DASHBOARD / RESUMEN
+# 1. DASHBOARD
 # ==========================================
 with tab_dash:
     st.header("Estado General de la Empresa")
@@ -278,40 +274,24 @@ with tab_dash:
 
     st.markdown("---")
     
-    # Generador PDF Resumen General
-    kpis_html = f"""
-    <table class="kpi-container">
-        <tr>
-            <td style="width: 33%;">
-                <div class="kpi-card">
-                    <div class="kpi-title">Dinero Por Cobrar</div>
-                    <div class="kpi-value" style="color: #2e7d32;">${total_cobrar:,.2f}</div>
-                </div>
-            </td>
-            <td style="width: 33%;">
-                <div class="kpi-card">
-                    <div class="kpi-title">Cuentas Por Pagar</div>
-                    <div class="kpi-value" style="color: #c62828;">${total_pagar:,.2f}</div>
-                </div>
-            </td>
-            <td style="width: 33%;">
-                <div class="kpi-card">
-                    <div class="kpi-title">Viajes Activos</div>
-                    <div class="kpi-value" style="color: #1565c0;">{ops_activas}</div>
-                </div>
-            </td>
-        </tr>
-    </table>
-    """
-    body_resumen = "<h3>Estado General de la Operación</h3><p>Este informe refleja los balances pendientes de cobro, compromisos de pago activos y el estado de la flota/operaciones en tránsito a la fecha de emisión.</p>"
+    # PDF de Resumen
+    ops_todas = supabase.table("operaciones").select("referencia, puerto_origen, puerto_destino, estado, fecha_embarque").execute().data
+    df_resumen = pd.DataFrame(ops_todas) if ops_todas else pd.DataFrame()
     
-    pdf_dash = generar_pdf_html("Reporte Consolidado - Resumen General", body_resumen, kpis_html)
-    st.download_button(
-        label="📄 Descargar Reporte General (PDF)",
-        data=pdf_dash,
-        file_name=f"Reporte_General_{datetime.now().strftime('%Y%m%d')}.pdf",
-        mime="application/pdf"
-    )
+    kpis = {
+        "Por Cobrar": f"${total_cobrar:,.2f}",
+        "Por Pagar": f"${total_pagar:,.2f}",
+        "Viajes Activos": str(ops_activas)
+    }
+    
+    if not df_resumen.empty:
+        pdf_resumen = generar_pdf_reporte("Reporte General de Operaciones y Estado", df_resumen, resumen_kpi=kpis)
+        st.download_button(
+            label="📄 Descargar Reporte General (PDF)",
+            data=pdf_resumen,
+            file_name=f"reporte_general_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
 
 # ==========================================
 # 2. REGISTRO DE CONTACTOS / DIRECTORIO
@@ -339,20 +319,17 @@ with tab_contactos:
                 else:
                     st.error("Ingresa al menos el nombre.")
 
-    # Lista de contactos
     data_contactos = supabase.table("contactos").select("*").execute().data
     if data_contactos:
         df_contactos = pd.DataFrame(data_contactos)[["nombre_empresa", "persona_contacto", "telefono", "tipo"]]
+        df_contactos.columns = ["Empresa", "Contacto", "Teléfono", "Tipo"]
         st.dataframe(df_contactos, use_container_width=True)
 
-        # Generador PDF Directorio
-        table_html = df_contactos.to_html(classes="data-table", index=False, header=True)
-        pdf_contactos = generar_pdf_html("Directorio de Clientes y Proveedores", f"<h3>Lista Registrada</h3>{table_html}")
-        
+        pdf_contactos = generar_pdf_reporte("Directorio de Clientes y Proveedores", df_contactos)
         st.download_button(
             label="📄 Descargar Directorio (PDF)",
             data=pdf_contactos,
-            file_name=f"Directorio_Contactos_{datetime.now().strftime('%Y%m%d')}.pdf",
+            file_name=f"directorio_{datetime.now().strftime('%Y%m%d')}.pdf",
             mime="application/pdf"
         )
 
@@ -387,22 +364,20 @@ with tab_ops:
                     st.success("Operación registrada correctamente!")
                     st.rerun()
 
-    # Ver Operaciones
     ops_data = supabase.table("operaciones").select("*, contactos(nombre_empresa)").execute().data
     if ops_data:
         df_ops = pd.DataFrame(ops_data)
         df_ops['Cliente'] = df_ops['contactos'].apply(lambda x: x['nombre_empresa'] if x else 'N/A')
-        df_ops_view = df_ops[["referencia", "Cliente", "puerto_origen", "puerto_destino", "estado", "fecha_embarque"]]
-        st.dataframe(df_ops_view, use_container_width=True)
-
-        # Generador PDF Operaciones
-        table_html = df_ops_view.to_html(classes="data-table", index=False, header=True)
-        pdf_ops = generar_pdf_html("Reporte de Operaciones y Embarques", f"<h3>Historial de Operaciones</h3>{table_html}")
+        df_ops_mostrar = df_ops[["referencia", "Cliente", "puerto_origen", "puerto_destino", "estado", "fecha_embarque"]]
+        df_ops_mostrar.columns = ["Referencia / BL", "Cliente", "Origen", "Destino", "Estado", "Fecha Embarque"]
         
+        st.dataframe(df_ops_mostrar, use_container_width=True)
+
+        pdf_ops = generar_pdf_reporte("Reporte de Operaciones y Embarques", df_ops_mostrar)
         st.download_button(
             label="📄 Descargar Reporte de Operaciones (PDF)",
             data=pdf_ops,
-            file_name=f"Reporte_Operaciones_{datetime.now().strftime('%Y%m%d')}.pdf",
+            file_name=f"reporte_operaciones_{datetime.now().strftime('%Y%m%d')}.pdf",
             mime="application/pdf"
         )
 
@@ -435,7 +410,6 @@ with tab_cobros:
                     st.success("Cobro agendado!")
                     st.rerun()
 
-    # Tabla interactiva
     cobros_pendientes = supabase.table("cobros").select("*, operaciones(referencia)").eq("pagado", False).execute().data
     
     st.subheader("Pendientes por Cobrar")
@@ -447,26 +421,23 @@ with tab_cobros:
                 supabase.table("cobros").update({"pagado": True, "fecha_pago": str(datetime.now().date())}).eq("id", c['id']).execute()
                 st.rerun()
 
-        # Generador PDF Cobros
-        rows_cobros = "".join([
-            f"<tr><td>{c['operaciones']['referencia']}</td><td>{c['concepto']}</td><td>${c['monto']:,.2f}</td><td>{c['fecha_vencimiento']}</td></tr>"
-            for c in cobros_pendientes
-        ])
-        html_cobros = f"""
-        <h3>Pendientes por Cobrar</h3>
-        <table class="data-table">
-            <thead>
-                <tr><th>Operación</th><th>Concepto</th><th>Monto</th><th>Vencimiento</th></tr>
-            </thead>
-            <tbody>{rows_cobros}</tbody>
-        </table>
-        """
-        pdf_cobros = generar_pdf_html("Reporte de Cuentas por Cobrar", html_cobros)
+        # Preparar reporte PDF
+        list_cobros = []
+        for c in cobros_pendientes:
+            list_cobros.append({
+                "Operación": c['operaciones']['referencia'] if c['operaciones'] else "N/A",
+                "Concepto": c['concepto'],
+                "Monto ($)": f"${c['monto']:,.2f}",
+                "Vencimiento": c['fecha_vencimiento']
+            })
+        df_cobros_pdf = pd.DataFrame(list_cobros)
+        pdf_cobros = generar_pdf_reporte("Reporte de Cuentas por Cobrar", df_cobros_pdf)
+        
         st.markdown("---")
         st.download_button(
-            label="📄 Descargar Cuentas por Cobrar (PDF)",
+            label="📄 Descargar Reporte Por Cobrar (PDF)",
             data=pdf_cobros,
-            file_name=f"Reporte_Cobros_{datetime.now().strftime('%Y%m%d')}.pdf",
+            file_name=f"reporte_por_cobrar_{datetime.now().strftime('%Y%m%d')}.pdf",
             mime="application/pdf"
         )
     else:
@@ -503,7 +474,6 @@ with tab_pagos:
                     st.success("Pago registrado!")
                     st.rerun()
 
-    # Tabla interactiva
     pagos_pendientes = supabase.table("pagos").select("*, operaciones(referencia), contactos(nombre_empresa)").eq("pagado", False).execute().data
     
     st.subheader("Pendientes por Pagar")
@@ -516,26 +486,24 @@ with tab_pagos:
                 supabase.table("pagos").update({"pagado": True, "fecha_pago": str(datetime.now().date())}).eq("id", p['id']).execute()
                 st.rerun()
 
-        # Generador PDF Pagos
-        rows_pagos = "".join([
-            f"<tr><td>{p['contactos']['nombre_empresa'] if p['contactos'] else 'N/A'}</td><td>{p['operaciones']['referencia']}</td><td>{p['concepto']}</td><td>${p['monto']:,.2f}</td><td>{p['fecha_vencimiento']}</td></tr>"
-            for p in pagos_pendientes
-        ])
-        html_pagos = f"""
-        <h3>Pendientes por Pagar a Proveedores</h3>
-        <table class="data-table">
-            <thead>
-                <tr><th>Proveedor</th><th>Operación</th><th>Concepto</th><th>Monto</th><th>Vencimiento</th></tr>
-            </thead>
-            <tbody>{rows_pagos}</tbody>
-        </table>
-        """
-        pdf_pagos = generar_pdf_html("Reporte de Cuentas por Pagar", html_pagos)
+        # Preparar reporte PDF
+        list_pagos = []
+        for p in pagos_pendientes:
+            list_pagos.append({
+                "Proveedor / Naviera": p['contactos']['nombre_empresa'] if p['contactos'] else "N/A",
+                "Operación": p['operaciones']['referencia'] if p['operaciones'] else "N/A",
+                "Concepto": p['concepto'],
+                "Monto ($)": f"${p['monto']:,.2f}",
+                "Vencimiento": p['fecha_vencimiento']
+            })
+        df_pagos_pdf = pd.DataFrame(list_pagos)
+        pdf_pagos = generar_pdf_reporte("Reporte de Cuentas por Pagar", df_pagos_pdf)
+        
         st.markdown("---")
         st.download_button(
-            label="📄 Descargar Cuentas por Pagar (PDF)",
+            label="📄 Descargar Reporte Por Pagar (PDF)",
             data=pdf_pagos,
-            file_name=f"Reporte_Pagos_{datetime.now().strftime('%Y%m%d')}.pdf",
+            file_name=f"reporte_por_pagar_{datetime.now().strftime('%Y%m%d')}.pdf",
             mime="application/pdf"
         )
     else:
