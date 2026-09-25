@@ -1,6 +1,6 @@
 # ==========================================
 # PROYECTO: LOGYTRAM (Sistema NVOCC Guatemala)
-# Versión con Carga Condicional Segura
+# Versión con Sesión Persistente Optimizada
 # ==========================================
 import os
 import streamlit as st
@@ -69,11 +69,11 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# --- CONTROL DE SESIÓN Y LOGIN CON SUPABASE AUTH ---
-if "user_session" not in st.session_state:
-  st.session_state.user_session = None
+# --- CONTROL DE SESIÓN ---
+if "autenticado" not in st.session_state:
+  st.session_state.autenticado = False
 
-if not st.session_state.user_session:
+if not st.session_state.autenticado:
   col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
   with col_l2:
     st.markdown(
@@ -104,7 +104,9 @@ if not st.session_state.user_session:
               "password": password_input,
           })
           if response:
-            st.session_state.user_session = response
+            # Guardamos un estado booleano simple y seguro
+            st.session_state.autenticado = True
+            st.session_state.usuario_email = email_input
             st.success("¡Inicio de sesión exitoso!")
             st.rerun()
         except Exception as err:
@@ -112,13 +114,12 @@ if not st.session_state.user_session:
               "⚠️ Credenciales inválidas o usuario no registrado. Por favor"
               f" verifique. ({err})"
           )
-  st.stop()  # Detiene la ejecución por completo aquí si no hay sesión
+  st.stop()
 
 # ==========================================
-# APLICACIÓN PRINCIPAL (Solo se carga tras autenticarse)
+# APLICACIÓN PRINCIPAL (Usuario Autenticado)
 # ==========================================
 
-# Importación segura de módulos dentro de la sesión activa
 from modulos import cobros, directorio, operaciones, pagos
 
 col_h1, col_h2 = st.columns([4, 1])
@@ -131,8 +132,7 @@ with col_h1:
       unsafe_allow_html=True,
   )
   st.markdown(
-      "<p style='color: #5F6368; margin: 0;'>Módulo de Expedientes, Invoices"
-      " y Cuentas por Cobrar</p>",
+      f"<p style='color: #5F6368; margin: 0;'>Usuario conectado: <b>{st.session_state.get('usuario_email', 'Admin')}</b></p>",
       unsafe_allow_html=True,
   )
 
@@ -142,7 +142,8 @@ with col_h2:
       supabase.auth.sign_out()
     except Exception:
       pass
-    st.session_state.user_session = None
+    st.session_state.autenticado = False
+    st.session_state.usuario_email = None
     st.rerun()
 
 st.markdown("---")
@@ -172,7 +173,7 @@ with st.container():
 
 st.markdown("---")
 
-# NAVEGACIÓN BASADA EN TUS MÓDULOS REALES
+# NAVEGACIÓN POR PESTAÑAS
 pestanas = st.tabs([
     "🏢 Cobros e Invoices",
     "📂 Directorio",
