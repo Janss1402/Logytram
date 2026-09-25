@@ -25,7 +25,7 @@ if "authenticated" not in st.session_state:
   st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-  st.title("🔒 LOGYTRAM - Acceso al Sistema")
+  st.title("🚢 LOGYTRAM - Acceso al Sistema")
   with st.form("login_form"):
     email = st.text_input("Correo electrónico")
     password = st.text_input("Contraseña", type="password")
