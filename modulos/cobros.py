@@ -1,10 +1,12 @@
+import os
 from datetime import datetime, date
-from fpdf import FPDF
 import pandas as pd
 import streamlit as st
+from fpdf import FPDF
 
 
 def limpiar_texto(texto):
+  """Sanitiza el texto para evitar errores de codificación en fuentes estándar de FPDF."""
   if not texto:
     return ""
   return str(texto).encode("latin-1", "replace").decode("latin-1")
@@ -13,34 +15,43 @@ def limpiar_texto(texto):
 def generar_pdf_estado_cuenta(
     cliente_nombre, df_resumen_facturas, saldo_q, saldo_usd
 ):
+  """Genera el reporte en PDF del estado de cuenta incluyendo el logo de Logytram si existe."""
   pdf = FPDF()
   pdf.add_page()
 
-  # Encabezado
+  logo_path = "assets/logo.png"
+
+  # Encabezado e inclusión de Logo
+  if os.path.exists(logo_path):
+    pdf.image(logo_path, x=10, y=8, w=30)
+    pdf.set_xy(45, 10)
+  else:
+    pdf.set_xy(10, 10)
+
   pdf.set_font("helvetica", "B", 16)
-  pdf.cell(0, 10, "ESTADO DE CUENTA POR FACTURA", ln=1, align="C")
-  pdf.set_font("helvetica", "", 12)
-  pdf.cell(0, 10, f"Cliente: {limpiar_texto(cliente_nombre)}", ln=1, align="C")
+  pdf.cell(0, 10, "LOGYTRAM - ESTADO DE CUENTA", ln=1, align="C")
+  pdf.set_font("helvetica", "", 11)
+  pdf.cell(0, 8, f"Cliente: {limpiar_texto(cliente_nombre)}", ln=1, align="C")
   pdf.cell(
       0,
-      10,
-      f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y')}",
+      8,
+      f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
       ln=1,
       align="C",
   )
-  pdf.ln(5)
+  pdf.ln(10)
 
   # Resumen de Saldos
   pdf.set_font("helvetica", "B", 12)
-  pdf.cell(0, 10, "RESUMEN DE SALDOS PENDIENTES", ln=1)
-  pdf.set_font("helvetica", "", 12)
-  pdf.cell(0, 8, f"Saldo Total Pendiente Quetzales: Q {saldo_q:,.2f}", ln=1)
-  pdf.cell(0, 8, f"Saldo Total Pendiente Dolares: $ {saldo_usd:,.2f}", ln=1)
+  pdf.cell(0, 8, "RESUMEN DE SALDOS PENDIENTES", ln=1)
+  pdf.set_font("helvetica", "", 11)
+  pdf.cell(0, 7, f"Saldo Total Quetzales: Q {saldo_q:,.2f}", ln=1)
+  pdf.cell(0, 7, f"Saldo Total Dolares: $ {saldo_usd:,.2f}", ln=1)
   pdf.ln(5)
 
   # Detalle Factura por Factura
   pdf.set_font("helvetica", "B", 11)
-  pdf.cell(0, 10, "DETALLE DE FACTURAS / INVOICES", ln=1)
+  pdf.cell(0, 8, "DETALLE DE FACTURAS / INVOICES", ln=1)
   pdf.set_font("helvetica", "", 9)
 
   if not df_resumen_facturas.empty:
@@ -57,25 +68,29 @@ def generar_pdf_estado_cuenta(
           f"Fecha: {fec} | Fact: {fact} | Cont: {cont} | Total: {mon}"
           f" {monto:,.2f} | Saldo: {mon} {saldo:,.2f} | [{est}]"
       )
-      pdf.cell(0, 7, linea, ln=1)
+      pdf.cell(0, 6, linea, ln=1)
   else:
-    pdf.cell(0, 8, "No hay registros cargados.", ln=1)
+    pdf.cell(0, 7, "No hay registros cargados.", ln=1)
 
+  # Retorna el archivo como bytes puros para compatibilidad con Streamlit
   return bytes(pdf.output())
 
 
 def render(tipo_cambio, supabase):
   st.subheader("🏢 Gestión de Cobros y Conciliación por Factura")
 
-  # 1. Selector de Cliente
+  # 1. Cargar selector de clientes
   try:
     clientes_res = (
-        supabase.table("clientes").select("id, nombre").order("nombre").execute()
+        supabase.table("clientes")
+        .select("id, nombre")
+        .order("nombre")
+        .execute()
     )
     lista_clientes = clientes_res.data if clientes_res.data else []
   except Exception as e:
     lista_clientes = []
-    st.error(f"Error al conectar con clientes: {e}")
+    st.error(f"Error al conectar con la base de clientes: {e}")
 
   if not lista_clientes:
     st.info("Primero debes registrar clientes en el módulo 'Directorio'.")
@@ -89,7 +104,7 @@ def render(tipo_cambio, supabase):
 
   st.markdown("---")
 
-  # 2. Cargar Invoices y Pagos del Cliente para calcular saldos reales por factura
+  # 2. Obtener Invoices y Pagos acumulados del cliente
   try:
     inv_res = (
         supabase.table("invoices")
@@ -108,11 +123,11 @@ def render(tipo_cambio, supabase):
     raw_invoices = inv_res.data if inv_res.data else []
     raw_pagos = pagos_res.data if pagos_res.data else []
   except Exception as e:
-    st.error(f"Error cargando informacion financiera: {e}")
+    st.error(f"Error cargando información financiera: {e}")
     raw_invoices = []
     raw_pagos = []
 
-  # Procesar balance por factura
+  # 3. Procesar balance y mora factura por factura
   hoy = date.today()
   facturas_procesadas = []
   alertas_30_dias = 0
@@ -122,7 +137,7 @@ def render(tipo_cambio, supabase):
     monto_inicial = float(inv.get("monto", 0.0))
     moneda = inv.get("moneda", "Q")
 
-    # Sumar pagos específicos aplicados a esta factura
+    # Sumar pagos vinculados a la factura específica
     pagos_factura = [
         float(p.get("monto", 0.0))
         for p in raw_pagos
@@ -131,11 +146,11 @@ def render(tipo_cambio, supabase):
     monto_pagado = sum(pagos_factura)
     saldo_pendiente = max(0.0, monto_inicial - monto_pagado)
 
-    # Cálculo de días de antigüedad
+    # Días transcurridos
     fecha_inv = datetime.strptime(inv["fecha"], "%Y-%m-%d").date()
     dias_antiguedad = (hoy - fecha_inv).days
 
-    # Estado de la factura
+    # Estado de mora
     if saldo_pendiente <= 0.01:
       estado = "🔵 Pagada"
     elif dias_antiguedad > 30:
@@ -160,7 +175,7 @@ def render(tipo_cambio, supabase):
 
   df_facturas = pd.DataFrame(facturas_procesadas)
 
-  # Pestañas de la interfaz
+  # Pestañas principales
   tab_resumen, tab_invoice, tab_pago = st.tabs([
       "📊 Estado de Cuenta y Alertas",
       "📄 Cargar Nueva Factura / Invoice",
@@ -168,10 +183,9 @@ def render(tipo_cambio, supabase):
   ])
 
   # -------------------------------------------------------------
-  # TAB 1: RESUMEN DE ESTADO Y ALERTAS
+  # TAB 1: RESUMEN DE SALDOS, TABLA Y DESCARGA PDF
   # -------------------------------------------------------------
   with tab_resumen:
-    # Banner de alertas > 30 días
     if alertas_30_dias > 0:
       st.error(
           f"🚨 **ALERTA DE MORA:** Este cliente tiene **{alertas_30_dias}**"
@@ -179,7 +193,6 @@ def render(tipo_cambio, supabase):
           " pendiente."
       )
 
-    # Totales globales de saldos
     if not df_facturas.empty:
       saldo_q = df_facturas[df_facturas["Moneda"] == "Q"][
           "Saldo Pendiente"
@@ -195,10 +208,11 @@ def render(tipo_cambio, supabase):
     col_m2.metric("Saldo Total Pendiente (Dólares)", f"$ {saldo_usd:,.2f}")
 
     st.markdown("---")
-    st.markdown(f"#### Control Individual de Facturas - **{cliente_seleccionado}**")
+    st.markdown(
+        f"#### Control Individual de Facturas - **{cliente_seleccionado}**"
+    )
 
     if not df_facturas.empty:
-      # Mostrar tabla completa con saldos y estados
       columnas_mostrar = [
           "Fecha",
           "No. Factura/Inv",
@@ -219,7 +233,6 @@ def render(tipo_cambio, supabase):
       st.info("No hay facturas cargadas para este cliente.")
 
     st.markdown("---")
-    # Generar PDF
     try:
       pdf_bytes = generar_pdf_estado_cuenta(
           cliente_seleccionado, df_facturas, saldo_q, saldo_usd
@@ -236,17 +249,20 @@ def render(tipo_cambio, supabase):
       st.error(f"Error generando PDF: {e}")
 
   # -------------------------------------------------------------
-  # TAB 2: CARGAR NUEVO INVOICE / FACTURA
+  # TAB 2: REGISTRO DE NUEVA FACTURA
   # -------------------------------------------------------------
   with tab_invoice:
-    st.markdown(f"#### Nueva Factura / Cargo para: **{cliente_seleccionado}**")
+    st.markdown(
+        f"#### Nueva Factura / Cargo para: **{cliente_seleccionado}**"
+    )
     with st.form("form_nuevo_inv_det", clear_on_submit=True):
       col_f1, col_f2 = st.columns(2)
       with col_f1:
         no_factura = st.text_input("No. Factura / Invoice *")
         contenedor = st.text_input("No. Contenedor / Booking")
         concepto = st.text_input(
-            "Concepto (Ej. Flete, Demoras, Almacenaje)", value="Flete y gastos"
+            "Concepto (Ej. Flete, Demoras, Almacenaje)",
+            value="Flete y gastos",
         )
       with col_f2:
         fecha_inv = st.date_input("Fecha de Emisión / Cobro", value=hoy)
@@ -276,12 +292,12 @@ def render(tipo_cambio, supabase):
           st.warning("El campo 'No. Factura / Invoice' es obligatorio.")
 
   # -------------------------------------------------------------
-  # TAB 3: REGISTRAR PAGO A UNA FACTURA ESPECÍFICA
+  # TAB 3: APLICAR PAGO A UNA FACTURA ESPECÍFICA
   # -------------------------------------------------------------
   with tab_pago:
     st.markdown(f"#### Registrar Pago para: **{cliente_seleccionado}**")
 
-    # Filtrar solo facturas con saldo pendiente > 0
+    # Filtrar solo facturas vivas con saldo > 0
     facturas_pendientes = [
         f for f in facturas_procesadas if f["Saldo Pendiente"] > 0
     ]
@@ -289,11 +305,11 @@ def render(tipo_cambio, supabase):
     if not facturas_pendientes:
       st.success("🎉 Este cliente no tiene facturas pendientes de pago.")
     else:
-      # Formatear opciones para el selector de facturas
       opciones_facturas = {
           (
-              f"Factura: {f['No. Factura/Inv']} | Contenedor: {f['Contenedor']}"
-              f" | Saldo Pendiente: {f['Moneda']} {f['Saldo Pendiente']:,.2f}"
+              f"Factura: {f['No. Factura/Inv']} | Contenedor:"
+              f" {f['Contenedor']} | Saldo Pendiente: {f['Moneda']}"
+              f" {f['Saldo Pendiente']:,.2f}"
           ): f
           for f in facturas_pendientes
       }
