@@ -1,6 +1,6 @@
 # ==========================================
 # PROYECTO: LOGYTRAM (Sistema NVOCC Guatemala)
-# Gestión por Expedientes de Clientes, Invoices y Pagos
+# Gestión por Expedientes de Clientes, Invoices, Pagos y Login
 # ==========================================
 import os
 import sqlite3
@@ -64,6 +64,44 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+
+# --- SISTEMA DE INICIO DE SESIÓN ---
+if "autenticado" not in st.session_state:
+  st.session_state.autenticado = False
+
+if not st.session_state.autenticado:
+  st.markdown(
+      "<div style='text-align: center; margin-top: 50px;'>",
+      unsafe_allow_html=True,
+  )
+  if os.path.exists("logo.png"):
+    st.image("logo.png", width=220, use_container_width=False)
+  else:
+    st.markdown(
+        "<h1 style='color: #004B6E;'>🚢 LOGYTRAM</h1>", unsafe_allow_html=True
+    )
+  st.markdown(
+      "<h3>Acceso al Sistema de Gestión NVOCC</h3></div>",
+      unsafe_allow_html=True,
+  )
+
+  col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+  with col_l2:
+    with st.form("form_login"):
+      usuario_input = st.text_input("Usuario")
+      password_input = st.text_input("Contraseña", type="password")
+      submit_login = st.form_submit_button("Iniciar Sesión")
+
+      if submit_login:
+        # Credenciales predeterminadas (puedes cambiarlas aquí)
+        if usuario_input == "admin" and password_input == "1234":
+          st.session_state.autenticado = True
+          st.success("¡Bienvenido! Cargando sistema...")
+          st.rerun()
+        else:
+          st.error("⚠️ Usuario o contraseña incorrectos")
+  st.stop()  # Detiene la ejecución si no ha iniciado sesión
 
 
 def inicializar_base_maestra():
@@ -162,7 +200,7 @@ def inicializar_base_maestra():
 
 inicializar_base_maestra()
 
-# ENCABEZADO CENTRADO
+# ENCABEZADO CENTRADO (Una vez logueado)
 st.markdown(
     "<div style='text-align: center; margin-top: 10px; margin-bottom: 10px;'>",
     unsafe_allow_html=True,
@@ -224,7 +262,7 @@ pestanas = st.tabs([
 with pestanas[0]:
   embarques.render(tipo_cambio)
 with pestanas[1]:
-  cobros.render(tipo_cambio)  # Módulo reestructurado con Expedientes e Invoices
+  cobros.render(tipo_cambio)
 with pestanas[2]:
   seguimiento.render()
 with pestanas[3]:
