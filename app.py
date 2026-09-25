@@ -1,20 +1,12 @@
 # ==========================================
 # PROYECTO: LOGYTRAM (Sistema NVOCC Guatemala)
-# Versión Definitiva: Conectado 100% a Supabase
+# Versión 100% Sincronizada con tus Módulos y Supabase
 # ==========================================
 import os
 import streamlit as st
 from supabase import Client, create_client
 
-from modulos import (
-    cobros,
-    cotizaciones,
-    demoras,
-    embarques,
-    pagos,
-    reportes,
-    seguimiento,
-)
+from modulos import cobros, directorio, operaciones, pagos
 
 # Configuración inicial de la página
 st.set_page_config(
@@ -24,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Estilos CSS personalizados para una interfaz profesional
+# Estilos CSS profesionales
 st.markdown(
     """
     <style>
@@ -62,7 +54,7 @@ st.markdown(
 )
 
 
-# --- INICIALIZACIÓN DEL CLIENTE DE SUPABASE ---
+# --- INICIALIZACIÓN DE SUPABASE ---
 @st.cache_resource
 def init_supabase() -> Client:
   try:
@@ -71,8 +63,8 @@ def init_supabase() -> Client:
     return create_client(url, key)
   except Exception as e:
     st.error(
-        "⚠️ Error de configuración: Asegúrate de registrar tus secretos de"
-        f" Supabase en Streamlit Cloud (Settings -> Secrets). Detalles: {e}"
+        "⚠️ Error de configuración: Verifica tus secretos de Supabase en"
+        f" Streamlit Cloud. Detalles: {e}"
     )
     st.stop()
 
@@ -109,7 +101,6 @@ if not st.session_state.user_session:
 
       if btn_enviar:
         try:
-          # Autenticación segura gestionada por Supabase
           response = supabase.auth.sign_in_with_password({
               "email": email_input,
               "password": password_input,
@@ -123,13 +114,12 @@ if not st.session_state.user_session:
               "⚠️ Credenciales inválidas o usuario no registrado. Por favor"
               f" verifique. ({err})"
           )
-  st.stop()  # Detiene la ejecución de la app hasta que el usuario inicie sesión correctamente
+  st.stop()
 
 # ==========================================
 # APLICACIÓN PRINCIPAL (Usuario Autenticado)
 # ==========================================
 
-# Encabezado visual de la app
 col_h1, col_h2 = st.columns([4, 1])
 with col_h1:
   if os.path.exists("logo.png"):
@@ -146,7 +136,6 @@ with col_h1:
   )
 
 with col_h2:
-  # Botón de cierre de sesión seguro
   if st.button("🚪 Cerrar Sesión"):
     try:
       supabase.auth.sign_out()
@@ -182,29 +171,19 @@ with st.container():
 
 st.markdown("---")
 
-# NAVEGACIÓN POR PESTAÑAS PRINCIPALES DEL SISTEMA
+# NAVEGACIÓN BASada EN TUS MÓDULOS REALES
 pestanas = st.tabs([
-    "📦 Embarques",
-    "🏢 Clientes y Cobros (Invoices)",
-    "📱 Seguimiento",
-    "⏳ Demoras",
-    "📄 Cotizaciones",
-    "📊 Reportes",
-    "💸 Pagos Proveedores",
+    "🏢 Cobros e Invoices",
+    "📂 Directorio",
+    "⚙️ Operaciones",
+    "💸 Pagos",
 ])
 
-# Renderizado seguro pasando la conexión activa de Supabase a tus módulos
 with pestanas[0]:
-  embarques.render(tipo_cambio, supabase)
-with pestanas[1]:
   cobros.render(tipo_cambio, supabase)
+with pestanas[1]:
+  directorio.render(supabase)
 with pestanas[2]:
-  seguimiento.render(supabase)
+  operaciones.render(tipo_cambio, supabase)
 with pestanas[3]:
-  demoras.render(supabase)
-with pestanas[4]:
-  cotizaciones.render(tipo_cambio, supabase)
-with pestanas[5]:
-  reportes.render(supabase)
-with pestanas[6]:
   pagos.render(tipo_cambio, supabase)
