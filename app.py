@@ -1,10 +1,10 @@
 # ==========================================
 # PROYECTO: LOGYTRAM (Sistema NVOCC Guatemala)
-# Gestión por Expedientes de Clientes, Invoices y Pagos
+# Conectado a Supabase (Auth y Base de Datos)
 # ==========================================
 import os
-import sqlite3
 import streamlit as st
+from supabase import Client, create_client
 
 from modulos import (
     cobros,
@@ -65,103 +65,72 @@ st.markdown(
 )
 
 
-def inicializar_base_maestra():
-  conexion = sqlite3.connect("logytram.db")
-  cursor = conexion.cursor()
-
-  # 1. Bitácora de Auditoría
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bitacora (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            usuario TEXT,
-            accion TEXT,
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-  # 2. Tabla maestra de Clientes (Expedientes por Cliente)
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT UNIQUE,
-            nit TEXT,
-            contacto TEXT,
-            telefono TEXT,
-            email TEXT,
-            direccion TEXT
-        )
-    """)
-
-  # 3. Tabla de Invoices / Facturas de Cobro por Cliente
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id INTEGER,
-            num_factura TEXT UNIQUE,
-            hbl_asociado TEXT,
-            fecha_emision TEXT,
-            monto_total REAL,
-            moneda TEXT,
-            estado TEXT, -- Pendiente, Parcial, Pagada
-            FOREIGN KEY(cliente_id) REFERENCES clientes(id)
-        )
-    """)
-
-  # 4. Tabla de Pagos / Abonos acreditados a Invoices
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS pagos_clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_id INTEGER,
-            fecha_pago TEXT,
-            monto_abonado REAL,
-            metodo_pago TEXT,
-            referencia_banco TEXT,
-            FOREIGN KEY(invoice_id) REFERENCES invoices(id)
-        )
-    """)
-
-  # 5. Tabla base de Embarques
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS embarques (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hbl TEXT UNIQUE
-        )
-    """)
-
-  # Auto-migración segura de columnas en embarques
-  columnas_necesarias = {
-      "mbl": "TEXT",
-      "cliente": "TEXT",
-      "tipo_carga": "TEXT",
-      "naviera": "TEXT",
-      "puerto_destino": "TEXT",
-      "estado": "TEXT",
-  }
-
-  for col, tipo in columnas_necesarias.items():
-    try:
-      cursor.execute(f"ALTER TABLE embarques ADD COLUMN {col} {tipo}")
-    except sqlite3.OperationalError:
-      pass
-
-  # 6. Tabla de Gastos Operativos por Carga / HBL
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS gastos_embarque (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hbl TEXT,
-            concepto TEXT,
-            moneda TEXT,
-            monto REAL
-        )
-    """)
-
-  conexion.commit()
-  conexion.close()
+# --- CONEXIÓN A SUPABASE ---
+@st.cache_resource
+py_init = None  # Marcador para inicializar el cliente
+def init_supabase() -> Client:
+  url = st.secrets["supabase"]["url"]
+  key = st.secrets["supabase"]["key"]
+  return create_client(url, key)
 
 
-inicializar_base_maestra()
+try:
+  supabase = init_supabase()
+except Exception as e:
+  st.error(
+      "⚠️ Error al conectar con Supabase. Verifica tus secretos en Streamlit"
+      f" Cloud: {e}"
+  )
+  st.stop()
 
-# ENCABEZADO CENTRADO
+
+# --- SISTEMA DE INICIO DE SESIÓN CON SUPABASE AUTH ---
+if "user_session" not in st.session_state:
+  st.session_state.user_session = None
+
+if not st.session_state.user_session:
+  st.markdown(
+      "<div style='text-align: center; margin-top: 40px;'>",
+      unsafe_allow_html=True,
+  )
+  if os.path.exists("logo.png"):
+    st.image("logo.png", width=220, use_container_width=False)
+  else:
+    st.markdown(
+        "<h1 style='color: #004B6E;'>🚢 LOGYTRAM</h1>", unsafe_allow_html=True
+    )
+  st.markdown(
+      "<h3>Iniciar Sesión - Supabase Auth</h3></div>", unsafe_allow_html=True
+  )
+
+  col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+  with col_l2:
+    with st.form("form_login_supabase"):
+      email_input = st.text_input("Correo Electrónico (Email)")
+      password_input = st.text_input("Contraseña", type="password")
+      submit_login = st.form_submit_button("Entrar al Sistema")
+
+      if submit_login:
+        try:
+          # Intento de autenticación directa con Supabase Auth
+          response = supabase.auth.sign_in_with_password({
+              "email": email_input,
+              "password": password_input,
+          })
+          if response:
+            st.session_state.user_session = response
+            st.success("¡Acceso exitoso!")
+            st.rerun()
+        except Exception as err:
+          st.error(
+              "⚠️ Credenciales incorrectas o usuario no registrado en"
+              f" Supabase. Detalle: {err}"
+          )
+  st.stop()
+
+
+# --- APLICACIÓN PRINCIPAL (Una vez logueado con Supabase) ---
+
 st.markdown(
     "<div style='text-align: center; margin-top: 10px; margin-bottom: 10px;'>",
     unsafe_allow_html=True,
@@ -176,7 +145,7 @@ else:
 st.markdown(
     """
     <p style='font-size: 20px; color: #5F6368; font-weight: 500; margin-top: 5px;'>
-        Sistema Integral de Gestión NVOCC y Cuentas por Cobrar
+        Sistema Integral de Gestión NVOCC y Cuentas por Cobrar (Supabase Active)
     </p>
 </div>
 """,
@@ -208,7 +177,7 @@ with st.container():
 
 st.markdown("---")
 
-# NAVEGACIÓN POR PESTAÑAS PRINCIPALES (7 Pestañas activas)
+# NAVEGACIÓN POR PESTAÑAS PRINCIPALES
 pestanas = st.tabs([
     "📦 Embarques",
     "🏢 Clientes y Cobros (Invoices)",
@@ -220,9 +189,9 @@ pestanas = st.tabs([
 ])
 
 with pestanas[0]:
-  embarques.render(tipo_cambio)
+  embarques.render(tipo_cambio, supabase)  # Opcional si tus módulos usan supabase
 with pestanas[1]:
-  cobros.render(tipo_cambio)
+  cobros.render(tipo_cambio, supabase)
 with pestanas[2]:
   seguimiento.render()
 with pestanas[3]:
