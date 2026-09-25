@@ -6,7 +6,6 @@ from fpdf import FPDF
 
 
 def limpiar_texto(texto):
-  """Sanitiza el texto para evitar errores de codificación en fuentes estándar de FPDF."""
   if not texto:
     return ""
   return str(texto).encode("latin-1", "replace").decode("latin-1")
@@ -15,13 +14,11 @@ def limpiar_texto(texto):
 def generar_pdf_estado_cuenta(
     cliente_nombre, df_resumen_facturas, saldo_q, saldo_usd
 ):
-  """Genera el reporte en PDF del estado de cuenta incluyendo el logo de Logytram si existe."""
   pdf = FPDF()
   pdf.add_page()
 
   logo_path = "assets/logo.png"
 
-  # Encabezado e inclusión de Logo
   if os.path.exists(logo_path):
     pdf.image(logo_path, x=10, y=8, w=30)
     pdf.set_xy(45, 10)
@@ -41,7 +38,6 @@ def generar_pdf_estado_cuenta(
   )
   pdf.ln(10)
 
-  # Resumen de Saldos
   pdf.set_font("helvetica", "B", 12)
   pdf.cell(0, 8, "RESUMEN DE SALDOS PENDIENTES", ln=1)
   pdf.set_font("helvetica", "", 11)
@@ -49,7 +45,6 @@ def generar_pdf_estado_cuenta(
   pdf.cell(0, 7, f"Saldo Total Dolares: $ {saldo_usd:,.2f}", ln=1)
   pdf.ln(5)
 
-  # Detalle Factura por Factura
   pdf.set_font("helvetica", "B", 11)
   pdf.cell(0, 8, "DETALLE DE FACTURAS / INVOICES", ln=1)
   pdf.set_font("helvetica", "", 9)
@@ -72,14 +67,13 @@ def generar_pdf_estado_cuenta(
   else:
     pdf.cell(0, 7, "No hay registros cargados.", ln=1)
 
-  # Retorna el archivo como bytes puros para compatibilidad con Streamlit
   return bytes(pdf.output())
 
 
 def render(tipo_cambio, supabase):
-  st.subheader("🏢 Gestión de Cobros y Conciliación por Factura")
+  st.subheader("🏢 Gestión de Cobros, Conciliación y Edición")
 
-  # 1. Cargar selector de clientes
+  # 1. Cargar Clientes
   try:
     clientes_res = (
         supabase.table("clientes")
@@ -90,7 +84,7 @@ def render(tipo_cambio, supabase):
     lista_clientes = clientes_res.data if clientes_res.data else []
   except Exception as e:
     lista_clientes = []
-    st.error(f"Error al conectar con la base de clientes: {e}")
+    st.error(f"Error al conectar con clientes: {e}")
 
   if not lista_clientes:
     st.info("Primero debes registrar clientes en el módulo 'Directorio'.")
@@ -104,7 +98,7 @@ def render(tipo_cambio, supabase):
 
   st.markdown("---")
 
-  # 2. Obtener Invoices y Pagos acumulados del cliente
+  # 2. Cargar Invoices y Pagos de Supabase
   try:
     inv_res = (
         supabase.table("invoices")
@@ -117,17 +111,18 @@ def render(tipo_cambio, supabase):
         supabase.table("pagos")
         .select("*")
         .eq("cliente_id", cliente_id)
+        .order("fecha", desc=True)
         .execute()
     )
 
     raw_invoices = inv_res.data if inv_res.data else []
     raw_pagos = pagos_res.data if pagos_res.data else []
   except Exception as e:
-    st.error(f"Error cargando información financiera: {e}")
+    st.error(f"Error cargando datos financieros: {e}")
     raw_invoices = []
     raw_pagos = []
 
-  # 3. Procesar balance y mora factura por factura
+  # 3. Procesar balances y mora por factura
   hoy = date.today()
   facturas_procesadas = []
   alertas_30_dias = 0
@@ -137,7 +132,6 @@ def render(tipo_cambio, supabase):
     monto_inicial = float(inv.get("monto", 0.0))
     moneda = inv.get("moneda", "Q")
 
-    # Sumar pagos vinculados a la factura específica
     pagos_factura = [
         float(p.get("monto", 0.0))
         for p in raw_pagos
@@ -146,11 +140,9 @@ def render(tipo_cambio, supabase):
     monto_pagado = sum(pagos_factura)
     saldo_pendiente = max(0.0, monto_inicial - monto_pagado)
 
-    # Días transcurridos
     fecha_inv = datetime.strptime(inv["fecha"], "%Y-%m-%d").date()
     dias_antiguedad = (hoy - fecha_inv).days
 
-    # Estado de mora
     if saldo_pendiente <= 0.01:
       estado = "🔵 Pagada"
     elif dias_antiguedad > 30:
@@ -176,14 +168,15 @@ def render(tipo_cambio, supabase):
   df_facturas = pd.DataFrame(facturas_procesadas)
 
   # Pestañas principales
-  tab_resumen, tab_invoice, tab_pago = st.tabs([
+  tab_resumen, tab_invoice, tab_pago, tab_editar = st.tabs([
       "📊 Estado de Cuenta y Alertas",
-      "📄 Cargar Nueva Factura / Invoice",
-      "💰 Registrar Pago a Factura",
+      "📄 Cargar Nueva Factura",
+      "💰 Registrar Pago",
+      "✏️ Modificar / Eliminar Registros",
   ])
 
   # -------------------------------------------------------------
-  # TAB 1: RESUMEN DE SALDOS, TABLA Y DESCARGA PDF
+  # TAB 1: ESTADO DE CUENTA
   # -------------------------------------------------------------
   with tab_resumen:
     if alertas_30_dias > 0:
@@ -249,7 +242,7 @@ def render(tipo_cambio, supabase):
       st.error(f"Error generando PDF: {e}")
 
   # -------------------------------------------------------------
-  # TAB 2: REGISTRO DE NUEVA FACTURA
+  # TAB 2: CARGAR NUEVA FACTURA
   # -------------------------------------------------------------
   with tab_invoice:
     st.markdown(
@@ -261,8 +254,7 @@ def render(tipo_cambio, supabase):
         no_factura = st.text_input("No. Factura / Invoice *")
         contenedor = st.text_input("No. Contenedor / Booking")
         concepto = st.text_input(
-            "Concepto (Ej. Flete, Demoras, Almacenaje)",
-            value="Flete y gastos",
+            "Concepto (Ej. Flete, Demoras)", value="Flete y gastos"
         )
       with col_f2:
         fecha_inv = st.date_input("Fecha de Emisión / Cobro", value=hoy)
@@ -292,12 +284,10 @@ def render(tipo_cambio, supabase):
           st.warning("El campo 'No. Factura / Invoice' es obligatorio.")
 
   # -------------------------------------------------------------
-  # TAB 3: APLICAR PAGO A UNA FACTURA ESPECÍFICA
+  # TAB 3: REGISTRAR PAGO
   # -------------------------------------------------------------
   with tab_pago:
     st.markdown(f"#### Registrar Pago para: **{cliente_seleccionado}**")
-
-    # Filtrar solo facturas vivas con saldo > 0
     facturas_pendientes = [
         f for f in facturas_procesadas if f["Saldo Pendiente"] > 0
     ]
@@ -362,3 +352,179 @@ def render(tipo_cambio, supabase):
             st.rerun()
           except Exception as e:
             st.error(f"Error al registrar pago: {e}")
+
+  # -------------------------------------------------------------
+  # TAB 4: MODIFICAR / ELIMINAR REGISTROS (NUEVO)
+  # -------------------------------------------------------------
+  with tab_editar:
+    st.markdown(
+        f"#### Corregir o Eliminar Registros de: **{cliente_seleccionado}**"
+    )
+
+    subtab_edit_inv, subtab_edit_pago = st.tabs(
+        ["📄 Modificar / Borrar Facturas", "💰 Modificar / Borrar Pagos"]
+    )
+
+    # SUBTAB A: EDITAR O BORRAR FACTURAS
+    with subtab_edit_inv:
+      if not raw_invoices:
+        st.info("No hay facturas registradas para modificar.")
+      else:
+        dict_inv_edit = {
+            f"Factura: {inv.get('no_factura','S/N')} | Contenedor:"
+            f" {inv.get('contenedor','N/A')} | Fecha: {inv.get('fecha')} |"
+            f" Monto: {inv.get('moneda')} {float(inv.get('monto',0)):,.2f}": inv
+            for inv in raw_invoices
+        }
+
+        inv_label = st.selectbox(
+            "Seleccione la factura que desea modificar o eliminar:",
+            options=list(dict_inv_edit.keys()),
+            key="sel_inv_edit",
+        )
+        inv_actual = dict_inv_edit[inv_label]
+
+        with st.form("form_editar_factura"):
+          st.caption("Modifique los datos erróneos de la factura elegida:")
+          col_e1, col_e2 = st.columns(2)
+          with col_e1:
+            e_no_factura = st.text_input(
+                "No. Factura / Invoice", value=inv_actual.get("no_factura", "")
+            )
+            e_contenedor = st.text_input(
+                "Contenedor / Booking", value=inv_actual.get("contenedor", "")
+            )
+            e_concepto = st.text_input(
+                "Concepto", value=inv_actual.get("concepto", "")
+            )
+          with col_e2:
+            e_fecha = st.date_input(
+                "Fecha",
+                value=datetime.strptime(
+                    inv_actual.get("fecha"), "%Y-%m-%d"
+                ).date(),
+            )
+            e_moneda = st.selectbox(
+                "Moneda",
+                ["USD", "Q"],
+                index=0 if inv_actual.get("moneda") == "USD" else 1,
+            )
+            e_monto = st.number_input(
+                "Monto Total",
+                value=float(inv_actual.get("monto", 0.0)),
+                format="%.2f",
+            )
+
+          btn_guardar_e, btn_borrar_e = st.columns(2)
+          with btn_guardar_e:
+            sub_guardar = st.form_submit_button("💾 Guardar Cambios")
+          with btn_borrar_e:
+            sub_borrar = st.form_submit_button(
+                "🗑️ ELIMINAR FACTURA PERMANENTEMENTE"
+            )
+
+          if sub_guardar:
+            try:
+              up_data = {
+                  "no_factura": e_no_factura,
+                  "contenedor": e_contenedor,
+                  "concepto": e_concepto,
+                  "fecha": str(e_fecha),
+                  "moneda": e_moneda,
+                  "monto": e_monto,
+              }
+              supabase.table("invoices").update(up_data).eq(
+                  "id", inv_actual["id"]
+              ).execute()
+              st.success("Factura actualizada correctamente.")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error al actualizar factura: {e}")
+
+          if sub_borrar:
+            try:
+              supabase.table("invoices").delete().eq(
+                  "id", inv_actual["id"]
+              ).execute()
+              st.success("Factura eliminada del sistema.")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error al eliminar la factura: {e}")
+
+    # SUBTAB B: EDITAR O BORRAR PAGOS
+    with subtab_edit_pago:
+      if not raw_pagos:
+        st.info("No hay pagos registrados para modificar.")
+      else:
+        dict_pago_edit = {
+            f"Ref: {p.get('referencia','S/N')} | Fecha: {p.get('fecha')} |"
+            f" Monto: {p.get('moneda')} {float(p.get('monto',0)):,.2f}": p
+            for p in raw_pagos
+        }
+
+        pago_label = st.selectbox(
+            "Seleccione el pago que desea modificar o eliminar:",
+            options=list(dict_pago_edit.keys()),
+            key="sel_pago_edit",
+        )
+        pago_actual = dict_pago_edit[pago_label]
+
+        with st.form("form_editar_pago"):
+          st.caption("Modifique los datos erróneos del pago elegido:")
+          col_pe1, col_pe2 = st.columns(2)
+          with col_pe1:
+            pe_referencia = st.text_input(
+                "Referencia (No. Cheque / Boleta)",
+                value=pago_actual.get("referencia", ""),
+            )
+            pe_fecha = st.date_input(
+                "Fecha del Pago",
+                value=datetime.strptime(
+                    pago_actual.get("fecha"), "%Y-%m-%d"
+                ).date(),
+            )
+          with col_pe2:
+            pe_moneda = st.selectbox(
+                "Moneda",
+                ["USD", "Q"],
+                index=0 if pago_actual.get("moneda") == "USD" else 1,
+            )
+            pe_monto = st.number_input(
+                "Monto Pagado",
+                value=float(pago_actual.get("monto", 0.0)),
+                format="%.2f",
+            )
+
+          btn_guardar_p, btn_borrar_p = st.columns(2)
+          with btn_guardar_p:
+            sub_guardar_p = st.form_submit_button("💾 Guardar Cambios")
+          with btn_borrar_p:
+            sub_borrar_p = st.form_submit_button(
+                "🗑️ ELIMINAR PAGO PERMANENTEMENTE"
+            )
+
+          if sub_guardar_p:
+            try:
+              up_pago_data = {
+                  "referencia": pe_referencia,
+                  "fecha": str(pe_fecha),
+                  "moneda": pe_moneda,
+                  "monto": pe_monto,
+              }
+              supabase.table("pagos").update(up_pago_data).eq(
+                  "id", pago_actual["id"]
+              ).execute()
+              st.success("Pago actualizado correctamente.")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error al actualizar pago: {e}")
+
+          if sub_borrar_p:
+            try:
+              supabase.table("pagos").delete().eq(
+                  "id", pago_actual["id"]
+              ).execute()
+              st.success("Pago eliminado del sistema.")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error al eliminar pago: {e}")
