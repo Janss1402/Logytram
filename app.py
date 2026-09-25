@@ -66,44 +66,6 @@ st.markdown(
 )
 
 
-# --- SISTEMA DE INICIO DE SESIÓN ---
-if "autenticado" not in st.session_state:
-  st.session_state.autenticado = False
-
-if not st.session_state.autenticado:
-  st.markdown(
-      "<div style='text-align: center; margin-top: 50px;'>",
-      unsafe_allow_html=True,
-  )
-  if os.path.exists("logo.png"):
-    st.image("logo.png", width=220, use_container_width=False)
-  else:
-    st.markdown(
-        "<h1 style='color: #004B6E;'>🚢 LOGYTRAM</h1>", unsafe_allow_html=True
-    )
-  st.markdown(
-      "<h3>Acceso al Sistema de Gestión NVOCC</h3></div>",
-      unsafe_allow_html=True,
-  )
-
-  col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
-  with col_l2:
-    with st.form("form_login"):
-      usuario_input = st.text_input("Usuario")
-      password_input = st.text_input("Contraseña", type="password")
-      submit_login = st.form_submit_button("Iniciar Sesión")
-
-      if submit_login:
-        # Credenciales predeterminadas (puedes cambiarlas aquí)
-        if usuario_input == "admin" and password_input == "1234":
-          st.session_state.autenticado = True
-          st.success("¡Bienvenido! Cargando sistema...")
-          st.rerun()
-        else:
-          st.error("⚠️ Usuario o contraseña incorrectos")
-  st.stop()  # Detiene la ejecución si no ha iniciado sesión
-
-
 def inicializar_base_maestra():
   conexion = sqlite3.connect("logytram.db")
   cursor = conexion.cursor()
@@ -200,7 +162,43 @@ def inicializar_base_maestra():
 
 inicializar_base_maestra()
 
-# ENCABEZADO CENTRADO (Una vez logueado)
+# --- SISTEMA DE INICIO DE SESIÓN SEGURO ---
+if "autenticado" not in st.session_state:
+  st.session_state.autenticado = False
+
+if not st.session_state.autenticado:
+  st.markdown(
+      "<div style='text-align: center; margin-top: 40px;'>",
+      unsafe_allow_html=True,
+  )
+  if os.path.exists("logo.png"):
+    st.image("logo.png", width=220, use_container_width=False)
+  else:
+    st.markdown(
+        "<h1 style='color: #004B6E;'>🚢 LOGYTRAM</h1>", unsafe_allow_html=True
+    )
+  st.markdown(
+      "<h3>Acceso al Sistema de Gestión NVOCC y Cobros</h3></div>",
+      unsafe_allow_html=True,
+  )
+
+  col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+  with col_l2:
+    with st.form("form_login_principal"):
+      usuario_input = st.text_input("Usuario")
+      password_input = st.text_input("Contraseña", type="password")
+      submit_login = st.form_submit_button("Iniciar Sesión")
+
+      if submit_login:
+        if usuario_input == "admin" and password_input == "1234":
+          st.session_state.autenticado = True
+          st.rerun()
+        else:
+          st.error("⚠️ Usuario o contraseña incorrectos")
+  st.stop()
+
+# --- APLICACIÓN PRINCIPAL (Una vez autenticado) ---
+
 st.markdown(
     "<div style='text-align: center; margin-top: 10px; margin-bottom: 10px;'>",
     unsafe_allow_html=True,
