@@ -1,6 +1,6 @@
 # ==========================================
 # PROYECTO: LOGYTRAM (Sistema NVOCC Guatemala)
-# Versión con Sesión Persistente Optimizada
+# Versión con Enrutamiento Lineal en Sidebar
 # ==========================================
 import os
 import streamlit as st
@@ -11,10 +11,10 @@ st.set_page_config(
     page_title="Logytram - Gestión NVOCC y Cuentas por Cobrar",
     page_icon="🚢",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
-# Estilos CSS profesionales
+# Estilos CSS
 st.markdown(
     """
     <style>
@@ -34,17 +34,9 @@ st.markdown(
             padding: 10px 20px;
             border-radius: 8px;
             border: none;
-            box-shadow: 0 4px 6px rgba(0, 75, 110, 0.2);
-            transition: all 0.3s ease;
         }
         div.stButton > button:hover {
             background-color: #00334E;
-            box-shadow: 0 6px 8px rgba(0, 75, 110, 0.3);
-        }
-        button[data-baseweb="tab"] {
-            font-size: 17px !important;
-            font-weight: 600 !important;
-            color: #004B6E !important;
         }
     </style>
 """,
@@ -55,16 +47,9 @@ st.markdown(
 # --- INICIALIZACIÓN DE SUPABASE ---
 @st.cache_resource
 def init_supabase() -> Client:
-  try:
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
-  except Exception as e:
-    st.error(
-        "⚠️ Error de configuración: Verifica tus secretos de Supabase en"
-        f" Streamlit Cloud. Detalles: {e}"
-    )
-    st.stop()
+  url = st.secrets["supabase"]["url"]
+  key = st.secrets["supabase"]["key"]
+  return create_client(url, key)
 
 
 supabase = init_supabase()
@@ -77,7 +62,7 @@ if not st.session_state.autenticado:
   col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
   with col_l2:
     st.markdown(
-        "<div style='text-align: center; margin-top: 30px;'>",
+        "<div style='text-align: center; margin-top: 40px;'>",
         unsafe_allow_html=True,
     )
     if os.path.exists("logo.png"):
@@ -87,8 +72,8 @@ if not st.session_state.autenticado:
           "<h1 style='color: #004B6E;'>🚢 LOGYTRAM</h1>", unsafe_allow_html=True
       )
     st.markdown(
-        "<h3>Control de Acceso Seguro</h3><p>Ingrese sus credenciales"
-        " registradas en Supabase</p></div>",
+        "<h3>Control de Acceso Seguro</h3><p>Inicie sesión con sus"
+        " credenciales de Supabase</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -104,16 +89,12 @@ if not st.session_state.autenticado:
               "password": password_input,
           })
           if response:
-            # Guardamos un estado booleano simple y seguro
             st.session_state.autenticado = True
             st.session_state.usuario_email = email_input
             st.success("¡Inicio de sesión exitoso!")
             st.rerun()
         except Exception as err:
-          st.error(
-              "⚠️ Credenciales inválidas o usuario no registrado. Por favor"
-              f" verifique. ({err})"
-          )
+          st.error(f"⚠️ Credenciales inválidas: {err}")
   st.stop()
 
 # ==========================================
@@ -122,21 +103,29 @@ if not st.session_state.autenticado:
 
 from modulos import cobros, directorio, operaciones, pagos
 
-col_h1, col_h2 = st.columns([4, 1])
-with col_h1:
+# Barra lateral de control y navegación lineal
+with st.sidebar:
   if os.path.exists("logo.png"):
-    st.image("logo.png", width=180, use_container_width=False)
-  st.markdown(
-      "<h2 style='margin: 0; color: #004B6E;'>Sistema Integral de Gestión"
-      " NVOCC</h2>",
-      unsafe_allow_html=True,
-  )
-  st.markdown(
-      f"<p style='color: #5F6368; margin: 0;'>Usuario conectado: <b>{st.session_state.get('usuario_email', 'Admin')}</b></p>",
-      unsafe_allow_html=True,
+    st.image("logo.png", width=150)
+  st.markdown(f"**Usuario:** {st.session_state.get('usuario_email', 'Admin')}")
+  st.markdown("---")
+
+  # Parámetro Global Financiero
+  tipo_cambio = st.number_input(
+      "Tipo de Cambio (Q por $1 USD)",
+      min_value=1.0000,
+      value=7.8500,
+      format="%.4f",
   )
 
-with col_h2:
+  st.markdown("---")
+  st.markdown("### Navegación del Sistema")
+  menu = st.radio(
+      "Seleccione un módulo:",
+      ["🏢 Cobros e Invoices", "📂 Directorio", "⚙️ Operaciones", "💸 Pagos"],
+  )
+
+  st.markdown("---")
   if st.button("🚪 Cerrar Sesión"):
     try:
       supabase.auth.sign_out()
@@ -146,46 +135,20 @@ with col_h2:
     st.session_state.usuario_email = None
     st.rerun()
 
+# Encabezado visual principal
+st.markdown(
+    "<h2 style='color: #004B6E; margin-bottom: 0;'>Sistema Integral de Gestión"
+    " NVOCC</h2>",
+    unsafe_allow_html=True,
+)
 st.markdown("---")
 
-# PARÁMETRO GLOBAL FINANCIERO (Tipo de Cambio)
-with st.container():
-  st.markdown(
-      "<div"
-      " style='background: #E8F0FE; padding: 12px 20px; border-radius: 8px;"
-      " margin-bottom: 20px; border-left: 5px solid #004B6E;'><b>💱 Parámetro"
-      " Financiero Global:</b> Configuración del Tipo de Cambio del Día</div>",
-      unsafe_allow_html=True,
-  )
-  col_tc1, col_tc2, _ = st.columns([1, 1, 2])
-  with col_tc1:
-    tipo_cambio = st.number_input(
-        "Tipo de Cambio (Quetzales por $1 USD)",
-        min_value=1.0000,
-        value=7.8500,
-        format="%.4f",
-        key="global_tc",
-    )
-  with col_tc2:
-    st.markdown(
-        f"<br><b>1 USD = Q. {tipo_cambio:.4f}</b>", unsafe_allow_html=True
-    )
-
-st.markdown("---")
-
-# NAVEGACIÓN POR PESTAÑAS
-pestanas = st.tabs([
-    "🏢 Cobros e Invoices",
-    "📂 Directorio",
-    "⚙️ Operaciones",
-    "💸 Pagos",
-])
-
-with pestanas[0]:
+# Renderizado condicional lineal por módulo (Evita errores de enrutamiento)
+if menu == "🏢 Cobros e Invoices":
   cobros.render(tipo_cambio, supabase)
-with pestanas[1]:
+elif menu == "📂 Directorio":
   directorio.render(supabase)
-with pestanas[2]:
+elif menu == "⚙️ Operaciones":
   operaciones.render(tipo_cambio, supabase)
-with pestanas[3]:
+elif menu == "💸 Pagos":
   pagos.render(tipo_cambio, supabase)
