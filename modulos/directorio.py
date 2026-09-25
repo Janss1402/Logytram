@@ -1,42 +1,41 @@
 import streamlit as st
-from supabase import create_client
 import pandas as pd
 
-st.set_page_config(page_title="Directorio", page_icon="👥", layout="wide")
+def render(supabase):
+    st.subheader("📂 Directorio de Clientes")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown("#### Nuevo Cliente")
+        with st.form("form_nuevo_cliente", clear_on_submit=True):
+            nombre = st.text_input("Nombre de la Empresa / Cliente *")
+            nit = st.text_input("NIT")
+            telefono = st.text_input("Teléfono")
+            submit_cliente = st.form_submit_button("Guardar Cliente")
+            
+            if submit_cliente:
+                if nombre:
+                    try:
+                        data = {"nombre": nombre, "nit": nit, "telefono": telefono}
+                        supabase.table("clientes").insert(data).execute()
+                        st.success("Cliente guardado exitosamente.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar: {e}")
+                else:
+                    st.warning("El nombre es obligatorio.")
 
-if "user" not in st.session_state or st.session_state.user is None:
-    st.warning("Por favor inicia sesión en la página principal.")
-    st.stop()
-
-supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-
-st.title("👥 Directorio de Contactos")
-
-with st.expander("➕ AGREGAR NUEVO CONTACTO", expanded=False):
-    with st.form("form_contacto"):
-        nombre = st.text_input("Nombre de la Empresa o Cliente*")
-        contacto = st.text_input("Persona de Atención / Contacto")
-        tel = st.text_input("Teléfono / WhatsApp")
-        tipo = st.selectbox("Categoría*", ["Cliente", "Naviera", "Transportista Terrestre", "Agente de Aduanas", "Otro"])
-        
-        if st.form_submit_button("Guardar Contacto", use_container_width=True):
-            if nombre:
-                supabase.table("contactos").insert({
-                    "nombre_empresa": nombre,
-                    "persona_contacto": contacto,
-                    "telefono": tel,
-                    "tipo": tipo
-                }).execute()
-                st.success("✅ Contacto guardado correctamente.")
-                st.rerun()
+    with col2:
+        st.markdown("#### Clientes Registrados")
+        try:
+            response = supabase.table("clientes").select("*").execute()
+            if response.data:
+                df_clientes = pd.DataFrame(response.data)
+                df_clientes = df_clientes[["nombre", "nit", "telefono"]]
+                df_clientes.columns = ["Nombre", "NIT", "Teléfono"]
+                st.dataframe(df_clientes, use_container_width=True, hide_index=True)
             else:
-                st.error("El nombre de la empresa es obligatorio.")
-
-st.subheader("Lista de Contactos Guardados")
-data_contactos = supabase.table("contactos").select("*").order("nombre_empresa").execute().data
-if data_contactos:
-    df_cont = pd.DataFrame(data_contactos)[["nombre_empresa", "persona_contacto", "telefono", "tipo"]]
-    df_cont.columns = ["Empresa / Cliente", "Contacto", "Teléfono", "Categoría"]
-    st.dataframe(df_cont, use_container_width=True)
-else:
-    st.info("No hay contactos guardados todavía.")
+                st.info("No hay clientes registrados aún.")
+        except Exception as e:
+            st.error(f"Error al cargar clientes: {e}")
