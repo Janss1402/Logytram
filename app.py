@@ -6,7 +6,7 @@ from supabase import Client, create_client
 import streamlit as st
 
 st.set_page_config(
-    page_title="LOGYTRAM - Control de cuentas", layout="wide", page_icon="📦"
+    page_title="LOGYTRAM - 🚢 Control de cuentas", layout="wide", page_icon="📦"
 )
 
 
