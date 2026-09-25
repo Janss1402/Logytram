@@ -67,7 +67,6 @@ st.markdown(
 
 # --- CONEXIÓN A SUPABASE ---
 @st.cache_resource
-py_init = None  # Marcador para inicializar el cliente
 def init_supabase() -> Client:
   url = st.secrets["supabase"]["url"]
   key = st.secrets["supabase"]["key"]
@@ -112,7 +111,6 @@ if not st.session_state.user_session:
 
       if submit_login:
         try:
-          # Intento de autenticación directa con Supabase Auth
           response = supabase.auth.sign_in_with_password({
               "email": email_input,
               "password": password_input,
@@ -189,7 +187,7 @@ pestanas = st.tabs([
 ])
 
 with pestanas[0]:
-  embarques.render(tipo_cambio, supabase)  # Opcional si tus módulos usan supabase
+  embarques.render(tipo_cambio, supabase)
 with pestanas[1]:
   cobros.render(tipo_cambio, supabase)
 with pestanas[2]:
