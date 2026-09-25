@@ -1,7 +1,4 @@
 streamlit
 supabase
 pandas
-reportlab
-openpyxl
-weasyprint
-pillow
+fpdf2
