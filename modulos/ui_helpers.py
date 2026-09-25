@@ -106,13 +106,13 @@ def render_banner():
     if os.path.exists(LOGO_PATH):
       st.image(LOGO_PATH, width=140)
     else:
-      st.markdown("### 📦 **LOGYTRAM**")
+      st.markdown("### 🚢 **LOGYTRAM**")
 
   with col_info:
     st.markdown(
         f"""
         <div class="main-header">
-            <div class="banner-title">LOGYTRAM - Sistema de Cuentas por Cobrar</div>
+            <div class="banner-title">LOGYTRAM - Sistema de Control de Cuentas</div>
             <div class="banner-subtitle">📍 Guatemala | 🕒 {hora_gt} (Hora Oficial GT)</div>
         </div>
         """,
