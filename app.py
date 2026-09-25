@@ -13,7 +13,6 @@ from modulos import (
     embarques,
     pagos,
     reportes,
-    seguridad,
     seguimiento,
 )
 
@@ -209,7 +208,7 @@ with st.container():
 
 st.markdown("---")
 
-# NAVEGACIÓN POR PESTAÑAS PRINCIPALES
+# NAVEGACIÓN POR PESTAÑAS PRINCIPALES (7 Pestañas activas)
 pestanas = st.tabs([
     "📦 Embarques",
     "🏢 Clientes y Cobros (Invoices)",
@@ -218,7 +217,6 @@ pestanas = st.tabs([
     "📄 Cotizaciones",
     "📊 Reportes",
     "💸 Pagos Proveedores",
-    "🛡️ Seguridad",
 ])
 
 with pestanas[0]:
@@ -235,5 +233,3 @@ with pestanas[5]:
   reportes.render()
 with pestanas[6]:
   pagos.render(tipo_cambio)
-with pestanas[7]:
-  seguridad.render()
