@@ -1,8 +1,8 @@
+from datetime import date, datetime
 import os
-from datetime import datetime, date
+from fpdf import FPDF
 import pandas as pd
 import streamlit as st
-from fpdf import FPDF
 
 
 def limpiar_texto(texto):
@@ -98,7 +98,7 @@ def render(tipo_cambio, supabase):
 
   st.markdown("---")
 
-  # 2. Cargar Invoices y Pagos de Supabase
+  # 2. Cargar Invoices, Pagos y Gastos de Supabase
   try:
     inv_res = (
         supabase.table("invoices")
@@ -117,12 +117,27 @@ def render(tipo_cambio, supabase):
 
     raw_invoices = inv_res.data if inv_res.data else []
     raw_pagos = pagos_res.data if pagos_res.data else []
+
+    # Cargar gastos de las facturas de este cliente
+    invoice_ids = [inv["id"] for inv in raw_invoices]
+    raw_gastos = []
+    if invoice_ids:
+      gastos_res = (
+          supabase.table("gastos_invoices")
+          .select("*")
+          .in_("invoice_id", invoice_ids)
+          .order("fecha", desc=True)
+          .execute()
+      )
+      raw_gastos = gastos_res.data if gastos_res.data else []
+
   except Exception as e:
     st.error(f"Error cargando datos financieros: {e}")
     raw_invoices = []
     raw_pagos = []
+    raw_gastos = []
 
-  # 3. Procesar balances y mora por factura
+  # 3. Procesar balances, gastos y mora por factura
   hoy = date.today()
   facturas_procesadas = []
   alertas_30_dias = 0
@@ -132,13 +147,26 @@ def render(tipo_cambio, supabase):
     monto_inicial = float(inv.get("monto", 0.0))
     moneda = inv.get("moneda", "Q")
 
+    # Calcular pagos aplicados a esta factura
     pagos_factura = [
         float(p.get("monto", 0.0))
         for p in raw_pagos
         if p.get("invoice_id") == inv_id
     ]
     monto_pagado = sum(pagos_factura)
-    saldo_pendiente = max(0.0, monto_inicial - monto_pagado)
+
+    # Calcular gastos adicionales de esta factura
+    gastos_factura_lista = [
+        float(g.get("monto", 0.0))
+        for g in raw_gastos
+        if g.get("invoice_id") == inv_id
+    ]
+    total_gastos = sum(gastos_factura_lista)
+
+    # El saldo pendiente toma en cuenta el monto inicial más los gastos adicionales menos los pagos
+    saldo_pendiente = max(
+        0.0, (monto_inicial + total_gastos) - monto_pagado
+    )
 
     fecha_inv = datetime.strptime(inv["fecha"], "%Y-%m-%d").date()
     dias_antiguedad = (hoy - fecha_inv).days
@@ -159,6 +187,7 @@ def render(tipo_cambio, supabase):
         "Concepto": inv.get("concepto", ""),
         "Moneda": moneda,
         "Monto Inicial": monto_inicial,
+        "Gastos Adicionales": total_gastos,
         "Pagado": monto_pagado,
         "Saldo Pendiente": saldo_pendiente,
         "Días": dias_antiguedad,
@@ -167,10 +196,11 @@ def render(tipo_cambio, supabase):
 
   df_facturas = pd.DataFrame(facturas_procesadas)
 
-  # Pestañas principales
-  tab_resumen, tab_invoice, tab_pago, tab_editar = st.tabs([
+  # Pestañas principales (Se agrega pestaña de Gastos Adicionales)
+  tab_resumen, tab_invoice, tab_gasto, tab_pago, tab_editar = st.tabs([
       "📊 Estado de Cuenta y Alertas",
       "📄 Cargar Nueva Factura",
+      "💸 Gastos Adicionales",
       "💰 Registrar Pago",
       "✏️ Modificar / Eliminar Registros",
   ])
@@ -213,6 +243,7 @@ def render(tipo_cambio, supabase):
           "Concepto",
           "Moneda",
           "Monto Inicial",
+          "Gastos Adicionales",
           "Pagado",
           "Saldo Pendiente",
           "Estado",
@@ -281,10 +312,74 @@ def render(tipo_cambio, supabase):
           except Exception as e:
             st.error(f"Error al guardar factura: {e}")
         else:
-          st.warning("El campo 'No. Factura / Invoice' es obligatorio.")
+          st.warning("El campo 'No. Factura / Invoice' is obligatorio.")
 
   # -------------------------------------------------------------
-  # TAB 3: REGISTRAR PAGO
+  # TAB 3: CARGAR GASTOS ADICIONALES (NUEVO)
+  # -------------------------------------------------------------
+  with tab_gasto:
+    st.markdown(
+        f"#### 💸 Registrar Gasto Adicional para: **{cliente_seleccionado}**"
+    )
+    if not raw_invoices:
+      st.info(
+          "Este cliente no tiene facturas registradas para asociar gastos."
+      )
+    else:
+      opciones_inv_gasto = {
+          (
+              f"Fact.: {inv.get('no_factura')} | Contenedor:"
+              f" {inv.get('contenedor', 'N/A')} | Moneda: {inv.get('moneda')}"
+          ): inv["id"]
+          for inv in raw_invoices
+      }
+
+      sel_inv_gasto_label = st.selectbox(
+          "Seleccione la factura de referencia:",
+          options=list(opciones_inv_gasto.keys()),
+      )
+      id_factura_elegida = opciones_inv_gasto[sel_inv_gasto_label]
+
+      with st.form("form_registrar_gasto_adicional", clear_on_submit=True):
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+          desc_gasto = st.text_input(
+              "Descripción del Gasto (Ej. Timbres, Trámites, Viáticos) *"
+          )
+          fecha_gasto = st.date_input("Fecha del Gasto", value=hoy)
+        with col_g2:
+          monto_gasto = st.number_input(
+              "Monto del Gasto", min_value=0.01, format="%.2f"
+          )
+
+        if st.form_submit_button("Guardar Gasto Adicional"):
+          if desc_gasto.strip():
+            try:
+              data_gasto = {
+                  "invoice_id": id_factura_elegida,
+                  "descripcion": desc_gasto.strip(),
+                  "monto": monto_gasto,
+                  "fecha": str(fecha_gasto),
+              }
+              supabase.table("gastos_invoices").insert(data_gasto).execute()
+              st.success("Gasto adicional agregado correctamente a la factura.")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error al guardar el gasto: {e}")
+          else:
+            st.warning("La descripción del gasto es obligatoria.")
+
+      # Mostrar historial de gastos registrados para este cliente
+      st.markdown("---")
+      st.markdown("##### Historial de Gastos Adicionales de este Cliente")
+      if raw_gastos:
+        df_g = pd.DataFrame(raw_gastos)
+        st.dataframe(df_g, use_container_width=True, hide_index=True)
+      else:
+        st.info("No hay gastos adicionales registrados para este cliente.")
+
+  # -------------------------------------------------------------
+  # TAB 4: REGISTRAR PAGO
   # -------------------------------------------------------------
   with tab_pago:
     st.markdown(f"#### Registrar Pago para: **{cliente_seleccionado}**")
@@ -354,16 +449,18 @@ def render(tipo_cambio, supabase):
             st.error(f"Error al registrar pago: {e}")
 
   # -------------------------------------------------------------
-  # TAB 4: MODIFICAR / ELIMINAR REGISTROS (NUEVO)
+  # TAB 5: MODIFICAR / ELIMINAR REGISTROS
   # -------------------------------------------------------------
   with tab_editar:
     st.markdown(
         f"#### Corregir o Eliminar Registros de: **{cliente_seleccionado}**"
     )
 
-    subtab_edit_inv, subtab_edit_pago = st.tabs(
-        ["📄 Modificar / Borrar Facturas", "💰 Modificar / Borrar Pagos"]
-    )
+    subtab_edit_inv, subtab_edit_gasto, subtab_edit_pago = st.tabs([
+        "📄 Modificar / Borrar Facturas",
+        "💸 Modificar / Borrar Gastos",
+        "💰 Modificar / Borrar Pagos",
+    ])
 
     # SUBTAB A: EDITAR O BORRAR FACTURAS
     with subtab_edit_inv:
@@ -451,7 +548,80 @@ def render(tipo_cambio, supabase):
             except Exception as e:
               st.error(f"Error al eliminar la factura: {e}")
 
-    # SUBTAB B: EDITAR O BORRAR PAGOS
+    # SUBTAB B: EDITAR O BORRAR GASTOS (NUEVO)
+    with subtab_edit_gasto:
+      if not raw_gastos:
+        st.info("No hay gastos adicionales registrados para modificar.")
+      else:
+        dict_gasto_edit = {
+            (
+                f"Gasto: {g.get('descripcion')} | Monto: Q"
+                f" {float(g.get('monto', 0)):,.2f} | Fecha: {g.get('fecha')}"
+            ): g
+            for g in raw_gastos
+        }
+
+        gasto_label = st.selectbox(
+            "Seleccione el gasto que desea modificar o eliminar:",
+            options=list(dict_gasto_edit.keys()),
+            key="sel_gasto_edit",
+        )
+        gasto_actual = dict_gasto_edit[gasto_label]
+
+        with st.form("form_editar_gasto"):
+          st.caption("Modifique los datos del gasto seleccionado:")
+          col_ge1, col_ge2 = st.columns(2)
+          with col_ge1:
+            ge_desc = st.text_input(
+                "Descripción", value=gasto_actual.get("descripcion", "")
+            )
+            ge_fecha = st.date_input(
+                "Fecha del Gasto",
+                value=datetime.strptime(
+                    gasto_actual.get("fecha"), "%Y-%m-%d"
+                ).date(),
+            )
+          with col_ge2:
+            ge_monto = st.number_input(
+                "Monto",
+                value=float(gasto_actual.get("monto", 0.0)),
+                format="%.2f",
+            )
+
+          btn_g_save, btn_g_del = st.columns(2)
+          with btn_g_save:
+            sub_g_guardar = st.form_submit_button("💾 Guardar Cambios")
+          with btn_g_del:
+            sub_g_borrar = st.form_submit_button(
+                "🗑️ ELIMINAR GASTO PERMANENTEMENTE"
+            )
+
+          if sub_g_guardar:
+            try:
+              up_gasto = {
+                  "descripcion": ge_desc.strip(),
+                  "monto": ge_monto,
+                  "fecha": str(ge_fecha),
+              }
+              supabase.table("gastos_invoices").update(up_gasto).eq(
+                  "id", gasto_actual["id"]
+              ).execute()
+              st.success("Gasto actualizado correctamente.")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error al actualizar gasto: {e}")
+
+          if sub_g_borrar:
+            try:
+              supabase.table("gastos_invoices").delete().eq(
+                  "id", gasto_actual["id"]
+              ).execute()
+              st.success("Gasto eliminado correctamente.")
+              st.rerun()
+            except Exception as e:
+              st.error(f"Error al eliminar gasto: {e}")
+
+    # SUBTAB C: EDITAR O BORRAR PAGOS
     with subtab_edit_pago:
       if not raw_pagos:
         st.info("No hay pagos registrados para modificar.")
