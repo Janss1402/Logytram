@@ -231,11 +231,27 @@ def render(tipo_cambio, supabase):
         col_m2.metric("Saldo Total Pendiente (Dólares)", f"$ {saldo_usd:,.2f}")
 
         st.markdown("---")
+        
+        # Mostrar el total de facturas ingresadas para el cliente
+        total_facturas_cliente = len(df_facturas)
         st.markdown(
-            f"#### Control Individual de Facturas - **{cliente_seleccionado}**"
+            f"#### Control Individual de Facturas - **{cliente_seleccionado}** (Total de facturas ingresadas: **{total_facturas_cliente}**)"
         )
 
         if not df_facturas.empty:
+            # Selector de filtro para las facturas
+            filtro_estado = st.radio(
+                "Filtrar facturas por estado:",
+                ["Todas", "Pendientes de pago", "Pagadas"],
+                horizontal=True,
+            )
+
+            df_filtrado = df_facturas.copy()
+            if filtro_estado == "Pendientes de pago":
+                df_filtrado = df_filtrado[df_filtrado["Saldo Pendiente"] > 0.01]
+            elif filtro_estado == "Pagadas":
+                df_filtrado = df_filtrado[df_filtrado["Saldo Pendiente"] <= 0.01]
+
             columnas_mostrar = [
                 "Fecha",
                 "No. Factura/Inv",
@@ -248,11 +264,15 @@ def render(tipo_cambio, supabase):
                 "Saldo Pendiente",
                 "Estado",
             ]
-            st.dataframe(
-                df_facturas[columnas_mostrar],
-                use_container_width=True,
-                hide_index=True,
-            )
+
+            if not df_filtrado.empty:
+                st.dataframe(
+                    df_filtrado[columnas_mostrar],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info(f"No hay facturas que coincidan con el filtro: '{filtro_estado}'.")
         else:
             st.info("No hay facturas cargadas para este cliente.")
 
@@ -296,13 +316,11 @@ def render(tipo_cambio, supabase):
 
             if st.form_submit_button("Guardar Factura"):
                 if no_factura.strip():
-                    # Validación: Verificar si ya existe una factura con el mismo número y contenedor para el cliente
                     factura_duplicada = False
                     for inv in raw_invoices:
                         inv_num = str(inv.get("no_factura", "")).strip().lower()
                         inv_cont = str(inv.get("contenedor", "")).strip().lower()
                         
-                        # Comparamos ignorando mayúsculas/minúsculas y espacios
                         if inv_num == no_factura.strip().lower() and inv_cont == contenedor.strip().lower():
                             factura_duplicada = True
                             break
@@ -705,20 +723,4 @@ def render(tipo_cambio, supabase):
                                 "moneda": pe_moneda,
                                 "monto": pe_monto,
                             }
-                            supabase.table("pagos").update(up_pago_data).eq(
-                                "id", pago_actual["id"]
-                            ).execute()
-                            st.success("Pago actualizado correctamente.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al actualizar pago: {e}")
-
-                    if sub_borrar_p:
-                        try:
-                            supabase.table("pagos").delete().eq(
-                                "id", pago_actual["id"]
-                            ).execute()
-                            st.success("Pago eliminado del sistema.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al eliminar pago: {e}")
+                            supabase.
