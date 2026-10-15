@@ -235,22 +235,40 @@ def render(tipo_cambio, supabase):
         # Mostrar el total de facturas ingresadas para el cliente
         total_facturas_cliente = len(df_facturas)
         st.markdown(
-            f"#### Control Individual de Facturas - **{cliente_seleccionado}** (Total de facturas ingresadas: **{total_facturas_cliente}**)"
+            f"#### Control Individual de Facturas - **{cliente_seleccionado}** (Total de facturas: **{total_facturas_cliente}**)"
         )
 
         if not df_facturas.empty:
-            # Selector de filtro para las facturas
-            filtro_estado = st.radio(
-                "Filtrar facturas por estado:",
-                ["Todas", "Pendientes de pago", "Pagadas"],
-                horizontal=True,
-            )
+            # Fila de controles: Filtro por estado y Buscador rápido
+            col_f1, col_f2 = st.columns([1, 1])
+            with col_f1:
+                filtro_estado = st.radio(
+                    "Filtrar facturas por estado:",
+                    ["Todas", "Pendientes de pago", "Pagadas"],
+                    horizontal=True,
+                )
+            with col_f2:
+                texto_busqueda = st.text_input(
+                    "🔍 Buscar por No. Factura, Contenedor o Concepto:",
+                    placeholder="Ej. 1234, DUCA, Flete..."
+                )
 
             df_filtrado = df_facturas.copy()
+
+            # 1. Aplicar filtro por estado
             if filtro_estado == "Pendientes de pago":
                 df_filtrado = df_filtrado[df_filtrado["Saldo Pendiente"] > 0.01]
             elif filtro_estado == "Pagadas":
                 df_filtrado = df_filtrado[df_filtrado["Saldo Pendiente"] <= 0.01]
+
+            # 2. Aplicar buscador rápido
+            if texto_busqueda.strip():
+                query = texto_busqueda.strip().lower()
+                df_filtrado = df_filtrado[
+                    df_filtrado["No. Factura/Inv"].astype(str).str.lower().str.contains(query, na=False) |
+                    df_filtrado["Contenedor"].astype(str).str.lower().str.contains(query, na=False) |
+                    df_filtrado["Concepto"].astype(str).str.lower().str.contains(query, na=False)
+                ]
 
             columnas_mostrar = [
                 "Fecha",
@@ -272,7 +290,7 @@ def render(tipo_cambio, supabase):
                     hide_index=True,
                 )
             else:
-                st.info(f"No hay facturas que coincidan con el filtro: '{filtro_estado}'.")
+                st.info("No se encontraron facturas que coincidan con la búsqueda / filtro seleccionado.")
         else:
             st.info("No hay facturas cargadas para este cliente.")
 
@@ -293,7 +311,7 @@ def render(tipo_cambio, supabase):
             st.error(f"Error generando PDF: {e}")
 
     # -------------------------------------------------------------
-    # TAB 2: CARGAR NUEVA FACTURA (CON VALIDACIÓN DE DUPLICADOS)
+    # TAB 2: CARGAR NUEVA FACTURA
     # -------------------------------------------------------------
     with tab_invoice:
         st.markdown(
