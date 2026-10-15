@@ -239,8 +239,8 @@ def render(tipo_cambio, supabase):
         )
 
         if not df_facturas.empty:
-            # Fila de controles: Filtro por estado y Buscador rápido
-            col_f1, col_f2 = st.columns([1, 1])
+            # Controles en columnas: Filtro por estado y Buscador rápido
+            col_f1, col_f2 = st.columns(2)
             with col_f1:
                 filtro_estado = st.radio(
                     "Filtrar facturas por estado:",
@@ -261,7 +261,7 @@ def render(tipo_cambio, supabase):
             elif filtro_estado == "Pagadas":
                 df_filtrado = df_filtrado[df_filtrado["Saldo Pendiente"] <= 0.01]
 
-            # 2. Aplicar buscador rápido
+            # 2. Aplicar buscador rápido por texto
             if texto_busqueda.strip():
                 query = texto_busqueda.strip().lower()
                 df_filtrado = df_filtrado[
