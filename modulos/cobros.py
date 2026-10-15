@@ -723,4 +723,20 @@ def render(tipo_cambio, supabase):
                                 "moneda": pe_moneda,
                                 "monto": pe_monto,
                             }
-                            supabase.
+                            supabase.table("pagos").update(up_pago_data).eq(
+                                "id", pago_actual["id"]
+                            ).execute()
+                            st.success("Pago actualizado correctamente.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al actualizar pago: {e}")
+
+                    if sub_borrar_p:
+                        try:
+                            supabase.table("pagos").delete().eq(
+                                "id", pago_actual["id"]
+                            ).execute()
+                            st.success("Pago eliminado del sistema.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al eliminar pago: {e}")
