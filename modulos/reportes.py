@@ -11,7 +11,14 @@ def limpiar_texto(texto):
     return str(texto).encode("latin-1", "replace").decode("latin-1")
 
 
-def generar_pdf_reporte_mensual(titulo_reporte, df_datos, total_q_fact, total_usd_fact, total_q_pend, total_usd_pend):
+def generar_pdf_reporte_mensual(
+    titulo_reporte,
+    df_datos,
+    total_q_fact,
+    total_usd_fact,
+    total_q_pend,
+    total_usd_pend,
+):
     pdf = FPDF()
     pdf.add_page()
 
@@ -35,15 +42,27 @@ def generar_pdf_reporte_mensual(titulo_reporte, df_datos, total_q_fact, total_us
     )
     pdf.ln(5)
 
-    # Resumen de Totales en el PDF
+    # Resumen Ejecutivo Inicial
     pdf.set_font("helvetica", "B", 10)
-    pdf.cell(0, 6, "RESUMEN GENERAL DEL PERIODO:", ln=1)
+    pdf.cell(0, 6, "RESUMEN DEL PERIODO:", ln=1)
     pdf.set_font("helvetica", "", 9)
-    pdf.cell(0, 5, f"Total Facturado Quetzales (Q): Q {total_q_fact:,.2f} | Saldo Pendiente: Q {total_q_pend:,.2f}", ln=1)
-    pdf.cell(0, 5, f"Total Facturado Dolares (USD): ${total_usd_fact:,.2f} \vert{} Saldo Pendiente:$ {total_usd_pend:,.2f}", ln=1)
+    pdf.cell(
+        0,
+        5,
+        f"Total Facturado Q: Q {total_q_fact:,.2f}  |  Saldo Pendiente Q: Q"
+        f" {total_q_pend:,.2f}",
+        ln=1,
+    )
+    pdf.cell(
+        0,
+        5,
+        f"Total Facturado USD: $ {total_usd_fact:,.2f}  |  Saldo Pendiente USD:"
+        f" $ {total_usd_pend:,.2f}",
+        ln=1,
+    )
     pdf.ln(5)
 
-    # Encabezados de tabla
+    # Encabezados de la Tabla
     pdf.set_font("helvetica", "B", 9)
     pdf.cell(22, 7, "Fecha", border=1)
     pdf.cell(38, 7, "Cliente", border=1)
@@ -53,7 +72,7 @@ def generar_pdf_reporte_mensual(titulo_reporte, df_datos, total_q_fact, total_us
     pdf.cell(25, 7, "Monto", border=1)
     pdf.cell(25, 7, "Saldo", border=1, ln=1)
 
-    # Contenido
+    # Filas de Datos
     pdf.set_font("helvetica", "", 8)
     if not df_datos.empty:
         for _, row in df_datos.iterrows():
@@ -72,19 +91,41 @@ def generar_pdf_reporte_mensual(titulo_reporte, df_datos, total_q_fact, total_us
             pdf.cell(16, 6, mon, border=1, align="C")
             pdf.cell(25, 6, f"{monto:,.2f}", border=1, align="R")
             pdf.cell(25, 6, f"{saldo:,.2f}", border=1, align="R", ln=1)
+
+        # -------------------------------------------------------------
+        # FILAS DE SUMATORIA TOTAL AL FINAL DE LA TABLA
+        # -------------------------------------------------------------
+        pdf.ln(2)
+        pdf.set_font("helvetica", "B", 8)
+
+        # Fila de Totales Quetzales
+        pdf.cell(142, 6, "TOTAL FACTURADO / PENDIENTE EN QUETZALES (Q):", border=1, align="R")
+        pdf.cell(25, 6, f"Q {total_q_fact:,.2f}", border=1, align="R")
+        pdf.cell(25, 6, f"Q {total_q_pend:,.2f}", border=1, align="R", ln=1)
+
+        # Fila de Totales Dólares
+        pdf.cell(142, 6, "TOTAL FACTURADO / PENDIENTE EN DOLARES ($):", border=1, align="R")
+        pdf.cell(25, 6, f"$ {total_usd_fact:,.2f}", border=1, align="R")
+        pdf.cell(25, 6, f"$ {total_usd_pend:,.2f}", border=1, align="R", ln=1)
+
     else:
-        pdf.cell(0, 8, "No hay registros para este periodo.", border=1, ln=1, align="C")
+        pdf.cell(
+            0, 8, "No hay registros para este periodo.", border=1, ln=1, align="C"
+        )
 
     return bytes(pdf.output())
 
 
 def render(supabase):
     st.subheader("📊 Módulo de Reportes Consolidados y Mensuales")
-    st.caption("Genera reportes ejecutivos en PDF filtrando por periodo y cliente con sus respectivos totales.")
+    st.caption(
+        "Genera reportes ejecutivos en PDF filtrando por periodo y cliente con"
+        " sus respectivas sumatorias finales."
+    )
 
     hoy = date.today()
 
-    # Cargar Clientes para el filtro opcional
+    # Cargar Clientes para el filtro
     try:
         clientes_res = (
             supabase.table("clientes")
@@ -105,15 +146,33 @@ def render(supabase):
     col_r1, col_r2, col_r3 = st.columns(3)
     with col_r1:
         meses_nombres = {
-            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-            5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-            9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+            1: "Enero",
+            2: "Febrero",
+            3: "Marzo",
+            4: "Abril",
+            5: "Mayo",
+            6: "Junio",
+            7: "Julio",
+            8: "Agosto",
+            9: "Septiembre",
+            10: "Octubre",
+            11: "Noviembre",
+            12: "Diciembre",
         }
-        mes_sel = st.selectbox("Seleccione Mes:", options=list(meses_nombres.keys()), format_func=lambda x: meses_nombres[x], index=hoy.month - 1)
+        mes_sel = st.selectbox(
+            "Seleccione Mes:",
+            options=list(meses_nombres.keys()),
+            format_func=lambda x: meses_nombres[x],
+            index=hoy.month - 1,
+        )
     with col_r2:
-        anio_sel = st.number_input("Año:", min_value=2024, max_value=2035, value=hoy.year, step=1)
+        anio_sel = st.number_input(
+            "Año:", min_value=2024, max_value=2035, value=hoy.year, step=1
+        )
     with col_r3:
-        cliente_label_sel = st.selectbox("Cliente:", options=list(opciones_clientes.keys()))
+        cliente_label_sel = st.selectbox(
+            "Cliente:", options=list(opciones_clientes.keys())
+        )
         cliente_id_sel = opciones_clientes[cliente_label_sel]
 
     st.markdown("---")
@@ -121,13 +180,24 @@ def render(supabase):
     # Obtención y Procesamiento de Datos
     try:
         if cliente_id_sel:
-            inv_res = supabase.table("invoices").select("*, clientes(nombre)").eq("cliente_id", cliente_id_sel).execute()
+            inv_res = (
+                supabase.table("invoices")
+                .select("*, clientes(nombre)")
+                .eq("cliente_id", cliente_id_sel)
+                .execute()
+            )
         else:
-            inv_res = supabase.table("invoices").select("*, clientes(nombre)").execute()
+            inv_res = (
+                supabase.table("invoices")
+                .select("*, clientes(nombre)")
+                .execute()
+            )
 
         raw_invoices = inv_res.data if inv_res.data else []
         all_pagos = supabase.table("pagos").select("*").execute().data or []
-        all_gastos = supabase.table("gastos_invoices").select("*").execute().data or []
+        all_gastos = (
+            supabase.table("gastos_invoices").select("*").execute().data or []
+        )
 
         datos_mes = []
         for inv in raw_invoices:
@@ -141,8 +211,16 @@ def render(supabase):
                 monto_ini = float(inv.get("monto", 0.0))
                 mon = inv.get("moneda", "Q")
 
-                p_tot = sum(float(p.get("monto", 0)) for p in all_pagos if p.get("invoice_id") == inv_id)
-                g_tot = sum(float(g.get("monto", 0)) for g in all_gastos if g.get("invoice_id") == inv_id)
+                p_tot = sum(
+                    float(p.get("monto", 0))
+                    for p in all_pagos
+                    if p.get("invoice_id") == inv_id
+                )
+                g_tot = sum(
+                    float(g.get("monto", 0))
+                    for g in all_gastos
+                    if g.get("invoice_id") == inv_id
+                )
                 saldo_pen = max(0.0, (monto_ini + g_tot) - p_tot)
 
                 nombre_cli = "Desconocido"
@@ -158,38 +236,75 @@ def render(supabase):
                     "Contenedor": inv.get("contenedor") or "N/A",
                     "Moneda": mon,
                     "Monto Inicial": monto_ini,
-                    "Saldo Pendiente": saldo_pen
+                    "Saldo Pendiente": saldo_pen,
                 })
 
         df_reporte = pd.DataFrame(datos_mes)
 
         if not df_reporte.empty:
-            # Calcular totales por moneda
-            tot_q_fact = df_reporte[df_reporte["Moneda"] == "Q"]["Monto Inicial"].sum()
-            tot_usd_fact = df_reporte[df_reporte["Moneda"] == "USD"]["Monto Inicial"].sum()
-            tot_q_pend = df_reporte[df_reporte["Moneda"] == "Q"]["Saldo Pendiente"].sum()
-            tot_usd_pend = df_reporte[df_reporte["Moneda"] == "USD"]["Saldo Pendiente"].sum()
+            # Calcular sumatorias por moneda
+            tot_q_fact = df_reporte[df_reporte["Moneda"] == "Q"][
+                "Monto Inicial"
+            ].sum()
+            tot_usd_fact = df_reporte[df_reporte["Moneda"] == "USD"][
+                "Monto Inicial"
+            ].sum()
+            tot_q_pend = df_reporte[df_reporte["Moneda"] == "Q"][
+                "Saldo Pendiente"
+            ].sum()
+            tot_usd_pend = df_reporte[df_reporte["Moneda"] == "USD"][
+                "Saldo Pendiente"
+            ].sum()
 
-            # Mostrar métricas visuales en pantalla antes de la tabla
+            # Mostrar métricas en la pantalla de Streamlit
             col_met1, col_met2 = st.columns(2)
-            col_met1.metric("Total Facturado (Quetzales)", f"Q {tot_q_fact:,.2f}", f"Pendiente: Q {tot_q_pend:,.2f}")
-            col_met2.metric("Total Facturado (Dólares)", f"$ {tot_usd_fact:,.2f}", f"Pendiente: $ {tot_usd_pend:,.2f}")
+            col_met1.metric(
+                "Total Facturado (Quetzales)",
+                f"Q {tot_q_fact:,.2f}",
+                f"Pendiente: Q {tot_q_pend:,.2f}",
+            )
+            col_met2.metric(
+                "Total Facturado (Dólares)",
+                f"$ {tot_usd_fact:,.2f}",
+                f"Pendiente: $ {tot_usd_pend:,.2f}",
+            )
 
             st.markdown("---")
-            st.markdown(f"##### Detalle de Facturas para **{meses_nombres[mes_sel]} {anio_sel}** (`{len(df_reporte)}` registros)")
+            st.markdown(
+                f"##### Detalle de Facturas para **{meses_nombres[mes_sel]}"
+                f" {anio_sel}** (`{len(df_reporte)}` registros)"
+            )
             st.dataframe(df_reporte, use_container_width=True, hide_index=True)
 
-            titulo_pdf = f"Reporte de {meses_nombres[mes_sel]} {anio_sel}" + (f" - {cliente_label_sel}" if cliente_id_sel else " - Todos los Clientes")
-            pdf_bytes = generar_pdf_reporte_mensual(titulo_pdf, df_reporte, tot_q_fact, tot_usd_fact, tot_q_pend, tot_usd_pend)
+            titulo_pdf = f"Reporte de {meses_nombres[mes_sel]} {anio_sel}" + (
+                f" - {cliente_label_sel}"
+                if cliente_id_sel
+                else " - Todos los Clientes"
+            )
+            pdf_bytes = generar_pdf_reporte_mensual(
+                titulo_pdf,
+                df_reporte,
+                tot_q_fact,
+                tot_usd_fact,
+                tot_q_pend,
+                tot_usd_pend,
+            )
 
             st.download_button(
-                label=f"📄 Descargar Reporte PDF con Totales ({meses_nombres[mes_sel]} {anio_sel})",
+                label=(
+                    "📄 Descargar Reporte PDF con Sumatorias Totales"
+                    f" ({meses_nombres[mes_sel]} {anio_sel})"
+                ),
                 data=pdf_bytes,
-                file_name=f"Reporte_Mensual_{meses_nombres[mes_sel]}_{anio_sel}.pdf",
+                file_name=(
+                    f"Reporte_Mensual_{meses_nombres[mes_sel]}_{anio_sel}.pdf"
+                ),
                 mime="application/pdf",
             )
         else:
-            st.info(f"No hay facturas registradas para el periodo {meses_nombres[mes_sel]} {anio_sel}.")
+            st.info(
+                f"No hay facturas registradas para el periodo {meses_nombres[mes_sel]} {anio_sel}."
+            )
 
     except Exception as e:
         st.error(f"Error cargando reporte mensual: {e}")
