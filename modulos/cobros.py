@@ -155,9 +155,7 @@ def render(tipo_cambio, supabase):
         ]
         monto_pagado = sum(pagos_factura)
 
-        # Calcular gastos adicionales de esta factura (separados por moneda si es necesario, o sumados de forma independiente)
-        # Nota: Aquí sumamos los montos de gastos de la misma moneda de la factura o ajustamos según se requiera.
-        # Asumiremos el monto directo para simplificar el saldo.
+        # Calcular gastos adicionales de esta factura
         gastos_factura_lista = [
             float(g.get("monto", 0.0))
             for g in raw_gastos
@@ -275,7 +273,7 @@ def render(tipo_cambio, supabase):
             st.error(f"Error generando PDF: {e}")
 
     # -------------------------------------------------------------
-    # TAB 2: CARGAR NUEVA FACTURA
+    # TAB 2: CARGAR NUEVA FACTURA (CON VALIDACIÓN DE DUPLICADOS)
     # -------------------------------------------------------------
     with tab_invoice:
         st.markdown(
@@ -297,27 +295,44 @@ def render(tipo_cambio, supabase):
                 )
 
             if st.form_submit_button("Guardar Factura"):
-                if no_factura:
-                    try:
-                        data_inv = {
-                            "cliente_id": cliente_id,
-                            "no_factura": no_factura,
-                            "contenedor": contenedor,
-                            "concepto": concepto,
-                            "monto": monto_inv,
-                            "moneda": moneda_inv,
-                            "fecha": str(fecha_inv),
-                        }
-                        supabase.table("invoices").insert(data_inv).execute()
-                        st.success("Factura cargada correctamente.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al guardar factura: {e}")
+                if no_factura.strip():
+                    # Validación: Verificar si ya existe una factura con el mismo número y contenedor para el cliente
+                    factura_duplicada = False
+                    for inv in raw_invoices:
+                        inv_num = str(inv.get("no_factura", "")).strip().lower()
+                        inv_cont = str(inv.get("contenedor", "")).strip().lower()
+                        
+                        # Comparamos ignorando mayúsculas/minúsculas y espacios
+                        if inv_num == no_factura.strip().lower() and inv_cont == contenedor.strip().lower():
+                            factura_duplicada = True
+                            break
+
+                    if factura_duplicada:
+                        st.error(
+                            f"⚠️ **Atención:** Ya existe una factura registrada con el número **'{no_factura.strip()}'** y contenedor **'{contenedor.strip()}'** para este cliente. "
+                            "Por favor, utilice la pestaña **'💸 Gastos Adicionales'** para cargar cargos extras en lugar de duplicar la factura."
+                        )
+                    else:
+                        try:
+                            data_inv = {
+                                "cliente_id": cliente_id,
+                                "no_factura": no_factura.strip(),
+                                "contenedor": contenedor.strip(),
+                                "concepto": concepto.strip(),
+                                "monto": monto_inv,
+                                "moneda": moneda_inv,
+                                "fecha": str(fecha_inv),
+                            }
+                            supabase.table("invoices").insert(data_inv).execute()
+                            st.success("Factura cargada correctamente.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar factura: {e}")
                 else:
                     st.warning("El campo 'No. Factura / Invoice' es obligatorio.")
 
     # -------------------------------------------------------------
-    # TAB 3: CARGAR GASTOS ADICIONALES (CON MONEDA)
+    # TAB 3: CARGAR GASTOS ADICIONALES
     # -------------------------------------------------------------
     with tab_gasto:
         st.markdown(
@@ -551,7 +566,7 @@ def render(tipo_cambio, supabase):
                         except Exception as e:
                             st.error(f"Error al eliminar la factura: {e}")
 
-        # SUBTAB B: EDITAR O BORRAR GASTOS (CON EDICIÓN DE MONEDA)
+        # SUBTAB B: EDITAR O BORRAR GASTOS
         with subtab_edit_gasto:
             if not raw_gastos:
                 st.info("No hay gastos adicionales registrados para modificar.")
