@@ -321,7 +321,11 @@ def render(tipo_cambio, supabase):
             col_f1, col_f2 = st.columns(2)
             with col_f1:
                 no_factura = st.text_input("No. Factura / Invoice *")
-                contenedor = st.text_input("No. Contenedor / Booking")
+                contenedor = st.text_area(
+                    "No. Contenedor(es) / Booking",
+                    placeholder="Puedes ingresar varios separados por comas o líneas. Ej:\nMIAJ330792, MIAJ330598",
+                    height=85
+                )
                 concepto = st.text_input(
                     "Concepto (Ej. Flete, Demoras)", value="Flete y gastos"
                 )
@@ -334,26 +338,33 @@ def render(tipo_cambio, supabase):
 
             if st.form_submit_button("Guardar Factura"):
                 if no_factura.strip():
+                    num_factura_clean = no_factura.strip().lower()
+                    contenedor_clean = contenedor.strip().lower()
+
                     factura_duplicada = False
                     for inv in raw_invoices:
                         inv_num = str(inv.get("no_factura", "")).strip().lower()
                         inv_cont = str(inv.get("contenedor", "")).strip().lower()
                         
-                        if inv_num == no_factura.strip().lower() and inv_cont == contenedor.strip().lower():
+                        if inv_num == num_factura_clean and inv_cont == contenedor_clean and contenedor_clean != "":
                             factura_duplicada = True
                             break
 
                     if factura_duplicada:
                         st.error(
-                            f"⚠️ **Atención:** Ya existe una factura registrada con el número **'{no_factura.strip()}'** y contenedor **'{contenedor.strip()}'** para este cliente. "
+                            f"⚠️ **Atención:** Ya existe una factura registrada con el número **'{no_factura.strip()}'** y el/los mismo(s) contenedor(es) para este cliente. "
                             "Por favor, utilice la pestaña **'💸 Gastos Adicionales'** para cargar cargos extras en lugar de duplicar la factura."
                         )
                     else:
                         try:
+                            contenedor_formateado = ", ".join([c.strip() for c in contenedor.splitlines() if c.strip()])
+                            if not contenedor_formateado:
+                                contenedor_formateado = contenedor.strip()
+
                             data_inv = {
                                 "cliente_id": cliente_id,
                                 "no_factura": no_factura.strip(),
-                                "contenedor": contenedor.strip(),
+                                "contenedor": contenedor_formateado,
                                 "concepto": concepto.strip(),
                                 "monto": monto_inv,
                                 "moneda": moneda_inv,
